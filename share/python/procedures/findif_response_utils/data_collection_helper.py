@@ -38,6 +38,7 @@ import copy
 import os
 import psi4
 import p4util
+import numpy
 
 
 def collect_displaced_matrix_data(db, signature, row_dim):
@@ -117,3 +118,36 @@ def parse_geometry_matrix_data(outfile, matrix_name, row_tot):
                     'in displacement sub-dirs!'.format(matrix_name))
 
     # END parse_geometry_matrix_data()
+
+# returns a numpy 3n x 3n matrix which is the hessian.
+def synthesize_hessian_matrix(db, signature, row_dim, natom):
+    """
+        To be done later on
+    """
+
+    step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
+
+    alpha_list = []
+    for job in db['job_status']:
+        with open('{}/output.dat'.format(job)) as outfile:
+            tensor = parse_geometry_matrix_data(outfile, signature, row_dim)
+            alpha_list.append(sum( [tensor[3*x] for x in xrange(row_dim)] ))
+
+    # For the time, lets assume that alpha_list contains alphas in the order:
+    # i) Two displacements for same homogenous derivatives; and then
+    # ii) Four displacements for heterogenous ones after
+    # iii) Equilibrium displacement in the end
+
+    eq_alpha = alpha_list.pop(-1)
+
+    result = numpy.zeros((3*natom, 3*natom))
+    for i in xrange(3*natom):
+        result[i][i] = (alpha_list[2*i] - 2*eq_alpha + alpha_list[2*i + 1])/step/step
+    index = 6*natom
+    for i in xrange(3*natom):
+        for j in xrange(i):
+            result[i][j] = (alpha_list[index] - alpha_list[index+1] 
+                                        - alpha_list[index+2] + alpha_list[index+3])/4.0/step/step
+            result[j][i] = result[i][j]
+
+    return result
