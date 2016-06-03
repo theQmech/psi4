@@ -67,18 +67,18 @@
 using namespace boost;
 using namespace psi;
 
-// int levi(int a, int b, int c);
-// double tensor_mean(SharedMatrix alpha);
-// double beta_alpha2(SharedMatrix alpha);
-// double beta_G2(SharedMatrix alpha, SharedMatrix G);
-// double beta_A2(SharedMatrix alpha, double ***A, double omega);
+ int levi(int a, int b, int c);
+ double tensor_mean(SharedMatrix alpha);
+ double beta_alpha2(SharedMatrix alpha);
+ double beta_G2(SharedMatrix alpha, SharedMatrix G);
+ double beta_A2(SharedMatrix alpha, double ***A, double omega);
 
-// double raman_linear(double alpha, double beta2);
-// double depolar_linear(double alpha, double beta2);
-// double raman_circular(double alpha, double beta2);
-// double depolar_circular(double alpha, double beta2);
-// void rs(int nm, int n, double **array, double *e_vals, int matz,
-//         double **e_vecs, double toler);
+ double raman_linear(double alpha, double beta2);
+ double depolar_linear(double alpha, double beta2);
+ double raman_circular(double alpha, double beta2);
+ double depolar_circular(double alpha, double beta2);
+ void rs(int nm, int n, double **array, double *e_vals, int matz,
+         double **e_vecs, double toler);
 
 // uncomment the ones needed as and when required
 
@@ -86,8 +86,11 @@ namespace psi { namespace ccresponse {
 
 void print_tensor_der(boost::shared_ptr<OutFile> myfile, std::vector<SharedMatrix> my_tensor_list);
 
-//void scatter(double step, std::vector <SharedMatrix> pol, std::vector <SharedMatrix> rot, std::vector <SharedMatrix> quad)
-void scatter(boost::shared_ptr<Molecule> molecule, Options &options, double step, std::vector <SharedMatrix> pol, std::vector <SharedMatrix> rot, std::vector <SharedMatrix> quad)
+void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
+    Options &options,
+    double step,
+    std::vector <SharedMatrix> G,
+    SharedMatrix G0)
 {
     double mstep = options.get_double("DISP_SIZE");
     //-> This is troublesome, need to decide if option should be set as global or local-"FINDIF"
@@ -143,71 +146,6 @@ void scatter(boost::shared_ptr<Molecule> molecule, Options &options, double step
     // Print the Wavelength
     outfile->Printf("\t Wavelength (in au): = %20.12f\n\n", omega);
 
-    // COMPUTE TENSOR DERIVATIVES
-    // Replicate the part of the roa.pl code that does this here in C++
-    // Dipole Polarizability Tensor Gradients
-
-    // We don't need to deal with polarizabiity for now.
-    // SharedMatrix denom_pol(new Matrix(3,3));
-    // denom_pol->set(2.0 * step);
-    // std::vector <SharedMatrix> pol_grad;
-    // for(std::vector<SharedMatrix>::iterator it_pol=pol.begin(); it_pol != pol.end(); ++it_pol) {
-    //     SharedMatrix grad_mat(new Matrix(3,3));
-    //     grad_mat->add(*it_pol);
-    //     ++it_pol;
-    //     grad_mat->subtract(*it_pol);
-    //     grad_mat->apply_denominator(denom_pol);
-    //     pol_grad.push_back(grad_mat);
-    // }
-
-    SharedMatrix denom_rot(new Matrix(3,3));
-    denom_rot->set(2.0 * step);
-	/*
-	 *  PSI4's OR Tensor is opposite in sign compared to PSI3.
-	 *  If we tried the trick below to match PSI3 OR tensor signs,
-     *  AND read in the normal coord. transform, we could match TDC's
-	 *  numbers spot on, basically.
-	 */
-    //denom_rot->set(-2.0 * step);
-    std::vector <SharedMatrix> rot_grad;
-    for(std::vector<SharedMatrix>::iterator it_rot=rot.begin(); it_rot != rot.end(); ++it_rot) {
-        SharedMatrix grad_mat(new Matrix(3,3));
-        grad_mat->add(*it_rot);
-        ++it_rot;
-        grad_mat->subtract(*it_rot);
-        grad_mat->apply_denominator(denom_rot);
-        rot_grad.push_back(grad_mat);
-    }
-
-    SharedMatrix denom_quad(new Matrix(9,3));
-    denom_quad->set(2.0 * step);
-    std::vector <SharedMatrix> quad_grad;
-    for(std::vector<SharedMatrix>::iterator it_quad=quad.begin(); it_quad != quad.end(); ++it_quad) {
-        SharedMatrix grad_mat(new Matrix(9,3));
-        grad_mat->add(*it_quad);
-        ++it_quad;
-        grad_mat->subtract(*it_quad);
-        grad_mat->apply_denominator(denom_quad);
-        quad_grad.push_back(grad_mat);
-    }
-
-    // Write Out the Tensor Derivatives to File tender.dat //
-    // Outfile derivs("tender.dat", "w");
-    boost::shared_ptr<OutFile> derivs(new OutFile("tender.dat", TRUNCATE));
-    derivs->Printf( "******************************************************\n");
-    derivs->Printf( "**********                                  **********\n");
-    derivs->Printf( "**********        TENSOR DERIVATIVES        **********\n");
-    derivs->Printf( "**********   FOR COMPUTING ROA SCATTERING   **********\n");
-    derivs->Printf( "**********                                  **********\n");
-    derivs->Printf( "******************************************************\n\n\n");
-    derivs->Printf( "\t*** Dipole Polarizability Derivative Tensors ***\n\n");
-    print_tensor_der(derivs, pol_grad);
-    derivs->Printf( "*********************************************************\n\n");
-    derivs->Printf( "\t*** Optical Rotation Derivative Tensors ***\n\n");
-    print_tensor_der(derivs, rot_grad);
-    derivs->Printf( "*********************************************************\n\n");
-    derivs->Printf( "\t*** Dipole/Quadrupole Derivative Tensors ***\n\n");
-    print_tensor_der(derivs, quad_grad);
 
     int natom = molecule->natom();
     SharedMatrix geom(new Matrix(natom,3));
@@ -228,55 +166,6 @@ void scatter(boost::shared_ptr<Molecule> molecule, Options &options, double step
     }
     fclose(hessian);
 
-	// Read in the Dipole-Moment Derivatives //
-    dipole_moment=fopen("file17.dat","r");
-    SharedMatrix dipder(new Matrix(3, natom*3));
-    for(i=0; i < 3; i++)
-    {
-      for(j=0; j < natom; j++)
-      {
-        int statusvalue=fscanf(dipole_moment, "%lf %lf %lf", &dipder->pointer()[i][j*3], &dipder->pointer()[i][j*3+1], &dipder->pointer()[i][j*3+2]);
-      }
-    }
-    fclose(dipole_moment);
-
-	// Convert Vectors of SharedMatrices to Single SuperMatrix //
-    SharedMatrix polder(new Matrix(natom*3, 9));
-    for (i=0;i<3*natom;i++)
-    {
-      for (j=0;j<9;j++)
-      {
-        polder->set(i,j,pol_grad[i]->get(j/3,j%3));
-      }
-    }
-
-    SharedMatrix optder(new Matrix(natom*3, 9));
-    for (i=0;i<3*natom;i++)
-    {
-      for (j=0;j<9;j++)
-      {
-        optder->set(i,j,rot_grad[i]->get(j/3,j%3));
-      }
-    }
-
-    SharedMatrix quadder(new Matrix(natom*3, 27));
-    for (i=0;i<3*natom;i++)
-    {
-      for (j=0;j<27;j++)
-      {
-        quadder->set(i,j,quad_grad[i]->get(j/3,j%3));
-      }
-    }
-
-	// Probably delete all these?
-    //quadder->print(stdout);
-    //for (i=0;i<pol_grad.size();i++)
-    //{
-      //pol_grad[i]->print(stdout);
-    //}
-    //polder->print(stdout);
-    //F->print(stdout);
-
     geom->copy(molecule->geometry());
     SharedMatrix geom_orig(new Matrix(natom,3));
     geom_orig->copy(geom);
@@ -289,16 +178,6 @@ void scatter(boost::shared_ptr<Molecule> molecule, Options &options, double step
 	molecule->move_to_com();
 	geom_orig->copy(molecule->geometry());
 
-    // Reading the Z-vals //
-    //-> Just use the Molecule's mass(x) function to get appropriate mass
-    //   of atom.
-/*
-    int zvals[natom];
-    for(i=0; i<natom; i++)
-    {
-        zvals[i]=molecule->Z(i);
-    }
-*/
 
     // Mass-weighting the co-ordinates //
     //double massi[natom];
@@ -461,17 +340,6 @@ void scatter(boost::shared_ptr<Molecule> molecule, Options &options, double step
     }
 
     Lx->gemm(0,0,1.0,M,Fevecs,0.0);
-/*
-	FILE* lxf = fopen("lx.dat","r");
-    for(i=0; i < (3*natom); i++)
-    {
-      for(j=0; j < (3*natom); j++)
-      {
-        fscanf(lxf,"%lf",&Lx->pointer()[i][j]);
-      }
-    }
-    fclose(lxf);
-*/
 	if(print >= 2)  {
 	  Lx->print();
     }
@@ -489,257 +357,10 @@ void scatter(boost::shared_ptr<Molecule> molecule, Options &options, double step
        }
     }
 
-   //redmass->print();
-
-   // Transform dipole-moment derivatives to normal coordinates //
-   SharedMatrix dipder_q(new Matrix(3,3*natom));
-   dipder_q->gemm(0,0,1.0,dipder,Lx,0.0);
-
-   // Compute IR intensities in projected normal coordinates //
-   double dipder_conv;
-   dipder_conv = pc_dipmom_debye2si*pc_dipmom_debye2si/(1e-20 * pc_amu2kg * pc_au2amu);
-   dipder_conv *= pc_na * pc_pi/(3.0 * pc_c * pc_c * 4.0 * pc_pi * pc_e0 * 1000.0);
-   SharedVector IRint(new Vector("IRint",3*natom));
-   for(i=0; i < natom*3; i++)
-   {
-     for(j=0; j < 3; j++)
-     {
-       IRint->add(i,dipder_conv * dipder_q->get(j,i) * dipder_q->get(j,i));
-     }
-   }
+  redmass->print();
 
 
-   // Transform polarizability derivatives to normal coordinates //
-   SharedMatrix polder_q(new Matrix(9,3*natom));
-   polder_q->gemm(1,0,1.0,polder,Lx,0.0);
-   if(print >=2) {
-     outfile->Printf("\n\tPolarizability Derivatives in Cart. Coord.\n");
-     polder->print();
-     outfile->Printf("\n\tPolarizability Derivatives in Normal Coord.\n");
-     polder_q->print();
-   }
-   int jk=0;
-   std::vector<SharedMatrix> alpha_der(3*natom);
-   for(i=0; i < alpha_der.size(); ++i)
-   {
-     alpha_der[i] = SharedMatrix(new Matrix(3,3));
-   }
-   SharedMatrix alpha_der_mat(new Matrix(3,3));
 
-   for(i=0; i < natom*3; i++)
-   {
-     for(j=0,jk=0; j < 3; j++)
-     {
-       for(k=0; k < 3; k++,jk++)
-       {
-         alpha_der[i]->set(j,k,polder_q->get(jk,i));
-
-       }
-     }
-   }
-
-   // Transform optical rotation tensor derivatives to normal coordinates //
-   SharedMatrix optder_q(new Matrix(9,3*natom));
-   optder_q->gemm(1,0,1.0,optder,Lx,0.0);
-   if(print >=2) {
-     outfile->Printf("\n\tOptical Rotation Tensor Derivatives in Cart. Coord..\n");
-     optder->print();
-     outfile->Printf("\n\tOptical Rotation Tensor Derivatives in Normal Coord.\n");
-     optder_q->print();
-   }
-
-   std::vector<SharedMatrix> G_der(3*natom);
-   for(i=0; i < G_der.size(); ++i)
-   {
-     G_der[i] = SharedMatrix(new Matrix(3,3));
-   }
-   SharedMatrix G_der_mat(new Matrix(3,3));
-
-   for(i=0; i < natom*3; i++)
-   {
-     for(j=0,jk=0; j < 3; j++)
-     {
-       for(k=0; k < 3; k++,jk++)
-       {
-         G_der[i]->set(j,k,optder_q->get(jk,i));
-       }
-     }
-   }
-
-
-   // Transform dipole/quarupole tensor derivatives to normal coordinates //
-   SharedMatrix quadder_q(new Matrix(27,3*natom));
-   quadder_q->gemm(1,0,1.0,quadder,Lx,0.0);
-   if(print >=2) {
-     outfile->Printf("\n\tDipole/Quadrupole Tensor Derivatives in Cart. Coord..\n");
-     quadder->print();
-     outfile->Printf("\n\tDipole/Quadrupole Tensor Derivatives in Normal Coord.\n");
-     quadder_q->print();
-   }
-
-   int jkl,l;
-   double**** Q_der = (double ****) malloc(natom*3*sizeof(double ***));
-   for(i=0; i < natom*3; i++)
-   {
-     Q_der[i] = (double ***) malloc(3*sizeof(double **));
-     for(j=0,jkl=0; j < 3; j++)
-     {
-       Q_der[i][j] = (double **) malloc(3*sizeof(double *));
-       for(k=0; k < 3; k++)
-       {
-       Q_der[i][j][k] = (double *) malloc(3*sizeof(double));
-         for(l=0; l < 3; l++,jkl++)
-         {
-           Q_der[i][j][k][l] = quadder_q->get(jkl,i);
-         }
-       }
-     }
-   }
-
-   // Compute the Raman scattering activity //
-   double raman_conv = pc_bohr2angstroms * pc_bohr2angstroms * pc_bohr2angstroms * pc_bohr2angstroms / pc_au2amu;
-   double km_convert = pc_hartree2J/(pc_bohr2m * pc_bohr2m * pc_amu2kg * pc_au2amu);
-   double cm_convert = 1.0/(2.0 * pc_pi * pc_c * 100.0);
-
-   SharedVector alpha(new Vector("Alpha",3*natom));
-   SharedVector betaalpha2(new Vector("BetaAlpha2",3*natom));
-   SharedVector ramint_linear(new Vector("RamIntLinear",3*natom));
-   SharedVector depol_linear(new Vector("DepolLinear",3*natom));
-   SharedVector ramint_circular(new Vector("RamIntCircular",3*natom));
-   SharedVector depol_circular(new Vector("DepolCircular",3*natom));
-
-   for(i=0; i < natom*3; i++)
-   {
-     alpha->set(i,tensor_mean(alpha_der[i]));
-     betaalpha2->set(i,beta_alpha2(alpha_der[i]));
-     ramint_linear->set(i,raman_linear(alpha->get(i), betaalpha2->get(i)));
-     depol_linear->set(i,depolar_linear(alpha->get(i), betaalpha2->get(i)));
-
-     ramint_circular->set(i,raman_circular(alpha->get(i), betaalpha2->get(i)));
-     depol_circular->set(i,depolar_circular(alpha->get(i), betaalpha2->get(i)));
-   }
-
-  /* compute the frequencies and spit them out in a nice table in the output file*/
-  outfile->Printf("\n\t     Harmonic Freq.  IR Intensity   Red. Mass       Alpha^2        Beta^2    Raman Int.  Depol. Ratio\n");
-  outfile->Printf("\t        (cm-1)         (km/mol)       (amu) \n");
-  outfile->Printf("\t---------------------------------------------------------------------------------------------------\n");
-  for(i=natom*3-1; i >= 0; i--)
-  {
-    if(Fevals->get(i) < 0.0)
-      outfile->Printf("\t  %3d  %9.3fi    %9.4f       %7.4f      %9.4f     %9.4f    %9.4f    %9.4f\n",
-       (natom*3-i), cm_convert*sqrt(-km_convert*Fevals->get(i)), IRint->get(i),
-       redmass->get(i), alpha->get(i)*alpha->get(i)*raman_conv, betaalpha2->get(i)*raman_conv,
-       ramint_linear->get(i)*raman_conv, depol_linear->get(i));
-    else
-      outfile->Printf("\t  %3d  %9.3f     %9.4f       %7.4f      %9.4f     %9.4f    %9.4f    %9.4f\n",
-       (natom*3-i), cm_convert*sqrt(km_convert*Fevals->get(i)), IRint->get(i),
-       redmass->get(i), alpha->get(i)*alpha->get(i)*raman_conv, betaalpha2->get(i)*raman_conv,
-       ramint_linear->get(i)*raman_conv, depol_linear->get(i));
-  }
-  outfile->Printf("\t---------------------------------------------------------------------------------------------------\n");
-
-  /* compute the frequencies and spit them out in a nice table */
-  outfile->Printf("----------------------------------------------------------------------------------------------\n");
-  outfile->Printf("                                Raman Scattering Parameters\n");
-  outfile->Printf("----------------------------------------------------------------------------------------------\n");
-  outfile->Printf("     Harmonic Freq.  Alpha^2   Beta^2    Raman Act.   Dep. Ratio  Raman Act.  Dep. Ratio\n");
-  outfile->Printf("        (cm-1)                           (linear)      (linear)   (natural)   (natural)\n");
-  outfile->Printf("----------------------------------------------------------------------------------------------\n");
-  for(i=natom*3-1; i >= 0; i--)
-  {
-    if(Fevals->get(i) < 0.0)
-      outfile->Printf("  %3d  %9.3fi %9.4f   %9.4f  %9.4f  %9.4f    %9.4f  %9.4f\n",
-       (natom*3-i), cm_convert*sqrt(-km_convert*Fevals->get(i)),
-       alpha->get(i)*alpha->get(i)*raman_conv, betaalpha2->get(i)*raman_conv,
-       ramint_linear->get(i)*raman_conv, depol_linear->get(i),
-       ramint_circular->get(i)*raman_conv, depol_circular->get(i));
-    else
-      outfile->Printf("  %3d  %9.3f  %9.4f   %9.4f  %9.4f  %9.4f    %9.4f  %9.4f\n",
-       (natom*3-i), cm_convert*sqrt(km_convert*Fevals->get(i)),
-       alpha->get(i)*alpha->get(i)*raman_conv, betaalpha2->get(i)*raman_conv,
-       ramint_linear->get(i)*raman_conv, depol_linear->get(i),
-       ramint_circular->get(i)*raman_conv, depol_circular->get(i));
-  }
-  outfile->Printf("----------------------------------------------------------------------------------------------\n");
-
-  SharedVector G(new Vector("G",3*natom));
-  SharedVector betaG2(new Vector("betaG2",3*natom));
-  SharedVector betaA2(new Vector("betaA2",3*natom));
-  G->zero();
-  betaG2->zero();
-  betaA2->zero();
-
-  for(i=0; i < natom*3; i++) {
-    G->set(i,tensor_mean(G_der[i]));
-    betaG2->set(i,beta_G2(alpha_der[i], G_der[i]));
-    betaA2->set(i,beta_A2(alpha_der[i], Q_der[i], omega));
-  }
-
-
-  double cvel = pc_c * pc_me * pc_bohr2angstroms * 1e-10 / (pc_h/(2.0*pc_pi));
-  double roa_conv = raman_conv * 1e6 / cvel;
-//  roa_conv /= _c * _me * _bohr2angstroms * 1e-10;
-//  roa_conv *= _h /(2.0 * _pi);
-  outfile->Printf("-----------------------------------------------------\n");
-  outfile->Printf("               ROA Scattering Invariants\n");
-  outfile->Printf("-----------------------------------------------------\n");
-  outfile->Printf("     Harmonic Freq.  AlphaG   Beta(G)^2  Beta(A)^2\n");
-  outfile->Printf("        (cm-1)\n");
-  outfile->Printf("-----------------------------------------------------\n");
-  for(i=natom*3-1; i >= 0; i--) {
-    if(Fevals->get(i) < 0.0)
-      outfile->Printf("  %3d  %9.3fi %9.4f   %10.4f  %10.4f\n",
-       (natom*3-i), cm_convert*sqrt(-km_convert*Fevals->get(i)),
-       alpha->get(i)*G->get(i)*roa_conv, betaG2->get(i)*roa_conv, betaA2->get(i)*roa_conv);
-    else
-      outfile->Printf("  %3d  %9.3f  %9.4f   %10.4f  %10.4f\n",
-       (natom*3-i), cm_convert*sqrt(km_convert*Fevals->get(i)),
-       alpha->get(i)*G->get(i)*roa_conv, betaG2->get(i)*roa_conv, betaA2->get(i)*roa_conv);
-  }
-  outfile->Printf("-----------------------------------------------------\n");
-
-  outfile->Printf("\n----------------------------------------------------------------------\n");
-  outfile->Printf("         ROA Difference Parameter R-L (Angstrom^4/amu * 1000) \n");
-  outfile->Printf("----------------------------------------------------------------------\n");
-  outfile->Printf("     Harmonic Freq. Delta_z(90) Delta_x(90)   Delta(0)  Delta(180)\n");
-  outfile->Printf("        (cm-1)\n");
-  outfile->Printf("----------------------------------------------------------------------\n");
-
-  double delta_0,delta_180,delta_x,delta_z;
-  for(i=natom*3-1; i >= 0; i--)
-  {
-
-    delta_0 = 4.0 * (180.0*alpha->get(i)*G->get(i) + 4.0*betaG2->get(i) - 4.0*betaA2->get(i));
-    delta_0 *= 1.0 / cvel;
-    delta_180 = 4.0 * (24.0 * betaG2->get(i) + 8.0 * betaA2->get(i));
-    delta_180 *= 1.0 / cvel;
-    delta_x = 4.0 * (45.0 * alpha->get(i) * G->get(i) + 7.0 * betaG2->get(i) + betaA2->get(i));
-    delta_x *= 1.0 / cvel;
-    delta_z = 4.0 * (6.0 * betaG2->get(i) - 2.0 * betaA2->get(i));
-    delta_z *= 1.0 / cvel;
-    if(Fevals->get(i) < 0.0)
-      outfile->Printf("  %3d  %9.3fi %10.4f   %10.4f   %10.4f   %10.4f\n",
-       (natom*3-i), cm_convert*sqrt(-km_convert*Fevals->get(i)),
-       delta_z*raman_conv*1e3, delta_x*raman_conv*1e3, delta_0*raman_conv*1e3, delta_180*raman_conv*1e3);
-    else
-      outfile->Printf("  %3d  %9.3f  %10.4f   %10.4f   %10.4f   %10.4f\n",
-       (natom*3-i), cm_convert*sqrt(km_convert*Fevals->get(i)),
-       delta_z*raman_conv*1e3, delta_x*raman_conv*1e3, delta_0*raman_conv*1e3, delta_180*raman_conv*1e3);
-  }
-
-}
-
-// Handy Tensor Derivative Array Printer
-void print_tensor_der(boost::shared_ptr<OutFile> myfile, std::vector<SharedMatrix> my_tensor_list)
-{
-  for(int i=0; i < my_tensor_list.size(); ++i)  {
-    int atom_num  = i/3;
-    int xyz       = i%3;
-    if(xyz==0) myfile->Printf( "\tAtom #%d, X-coord.:\n", atom_num);
-    if(xyz==1) myfile->Printf( "\tAtom #%d, Y-coord.:\n", atom_num);
-    if(xyz==2) myfile->Printf( "\tAtom #%d, Z-coord.:\n", atom_num);
-    my_tensor_list[i]->print("myfile");
-  }
 }
 
 }} // namespace psi::ccresponse
@@ -747,116 +368,116 @@ void print_tensor_der(boost::shared_ptr<OutFile> myfile, std::vector<SharedMatri
 
 /* The Levi-Civitas evaluator */
 
-int levi(int a, int b, int c)
-{
-  int val=0;
-  int x=0, y=1, z=2;
-
-  if(a==x && b==y && c==z) val=1;
-  else if(a==y && b==z && c==x) val=1;
-  else if(a==z && b==x && c==y) val=1;
-  else if(a==x && b==z && c==y) val=-1;
-  else if(a==y && b==x && c==z) val=-1;
-  else if(a==z && b==y && c==x) val=-1;
-  else val=0;
-
-  return val;
-}
-
-/* compute mean of a property tensor: alpha = 1/3 alpha_ii */
-double tensor_mean(SharedMatrix alpha)
-{
-  double mean=0.0;
-  int i;
-  for(i=0; i < 3; i++)
-    mean += alpha->get(i,i);
-  mean /= 3.0;
-  return mean;
-}
-
-/* compute beta(alpha)^2 = 1/2 [ 3 * alpha_ij*alpha_ij - alpha_ii*alpha_jj */
-double beta_alpha2(SharedMatrix alpha)
-{
-  double value = 0.0;
-  int i,j;
-  for(i=0; i < 3; i++)
-    for(j=0; j < 3; j++)
-      value += 0.5*(3.0*alpha->get(i,j)*alpha->get(i,j) - alpha->get(i,i)*alpha->get(j,j));
-
-  return value;
-}
-
-/* compute beta(G')^2 = 1/2[3 * alpha_ij*G'_ij - alpha_ii*G'_jj */
-double beta_G2(SharedMatrix alpha, SharedMatrix G)
-{
-  double value = 0.0;
-  int i,j;
-  for(i=0; i < 3; i++)
-    for(j=0; j < 3; j++)
-      value += 0.5*(3.0*alpha->get(i,j)*G->get(i,j) - alpha->get(i,i)*G->get(j,j));
-  return value;
-}
-
-/* compute beta(A)^2 = 1/2 omega * alpha_ij epsilon_ikl * A_klj */
-double beta_A2(SharedMatrix alpha, double ***A, double omega)
-{
-  double value=0.0;
-  int i,j,k,l;
-  for(i=0; i < 3; i++)
-    for(j=0; j < 3; j++)
-      for(k=0; k < 3; k++)
-        for(l=0; l < 3; l++)
-          value += 0.5 * omega * alpha->get(i,j) * levi(i,k,l) * A[k][l][j];
-
-  return value;
-}
-
-/* compute Raman intensity for linearly polarized radiation:
-    A = 45 (alpha^2) + 4 (beta^2)
-*/
-double raman_linear(double alpha, double beta2)
-{
-  double value = 0.0;
-  value = 45.0 * alpha * alpha + 4.0 * beta2;
-  return value;
-}
-
-/* compute Raman depolarization ratio for 90-degree scattering of linearly
-   polarized radiation:
-
-  ratio = [ 3 * beta(alpha)^2)/(45 * alpha^2 + 4 * beta(alpha)^2) ]
-*/
-double depolar_linear(double alpha, double beta2)
-{
-  double numer, denom;
-
-  numer = 3.0 * beta2;
-  denom = (45.0 * alpha * alpha) + (4.0 * beta2);
-
-  if(denom > 1e-6) return numer/denom;
-  else return 0.0;
-}
-
-/* compute Raman intensity for circularly polarized radiation:
-    A = 45 (alpha^2) + 7 (beta^2);
-*/
-double raman_circular(double alpha, double beta2)
-{
-  double value = 0.0;
-  value = 45.0 * alpha * alpha + 7.0 * beta2;
-  return value;
-}
-
-// compute Raman depolarization ratio for 90-degree scattering of circularly polarized radiation://
-// ratio = [ 6 * beta(alpha)^2)/(45 * alpha^2 + 7 * beta(alpha)^2) ] //
-
-double depolar_circular(double alpha, double beta2)
-{
-  double numer, denom;
-
-  numer = 6.0 * beta2;
-  denom = (45.0 * alpha * alpha) + (7.0 * beta2);
-
-  if(denom > 1e-6) return numer/denom;
-  else return 0.0;
-}
+//int levi(int a, int b, int c)
+//{
+//  int val=0;
+//  int x=0, y=1, z=2;
+//
+//  if(a==x && b==y && c==z) val=1;
+//  else if(a==y && b==z && c==x) val=1;
+//  else if(a==z && b==x && c==y) val=1;
+//  else if(a==x && b==z && c==y) val=-1;
+//  else if(a==y && b==x && c==z) val=-1;
+//  else if(a==z && b==y && c==x) val=-1;
+//  else val=0;
+//
+//  return val;
+//}
+//
+///* compute mean of a property tensor: alpha = 1/3 alpha_ii */
+//double tensor_mean(SharedMatrix alpha)
+//{
+//  double mean=0.0;
+//  int i;
+//  for(i=0; i < 3; i++)
+//    mean += alpha->get(i,i);
+//  mean /= 3.0;
+//  return mean;
+//}
+//
+///* compute beta(alpha)^2 = 1/2 [ 3 * alpha_ij*alpha_ij - alpha_ii*alpha_jj */
+//double beta_alpha2(SharedMatrix alpha)
+//{
+//  double value = 0.0;
+//  int i,j;
+//  for(i=0; i < 3; i++)
+//    for(j=0; j < 3; j++)
+//      value += 0.5*(3.0*alpha->get(i,j)*alpha->get(i,j) - alpha->get(i,i)*alpha->get(j,j));
+//
+//  return value;
+//}
+//
+///* compute beta(G')^2 = 1/2[3 * alpha_ij*G'_ij - alpha_ii*G'_jj */
+//double beta_G2(SharedMatrix alpha, SharedMatrix G)
+//{
+//  double value = 0.0;
+//  int i,j;
+//  for(i=0; i < 3; i++)
+//    for(j=0; j < 3; j++)
+//      value += 0.5*(3.0*alpha->get(i,j)*G->get(i,j) - alpha->get(i,i)*G->get(j,j));
+//  return value;
+//}
+//
+///* compute beta(A)^2 = 1/2 omega * alpha_ij epsilon_ikl * A_klj */
+//double beta_A2(SharedMatrix alpha, double ***A, double omega)
+//{
+//  double value=0.0;
+//  int i,j,k,l;
+//  for(i=0; i < 3; i++)
+//    for(j=0; j < 3; j++)
+//      for(k=0; k < 3; k++)
+//        for(l=0; l < 3; l++)
+//          value += 0.5 * omega * alpha->get(i,j) * levi(i,k,l) * A[k][l][j];
+//
+//  return value;
+//}
+//
+///* compute Raman intensity for linearly polarized radiation:
+//    A = 45 (alpha^2) + 4 (beta^2)
+//*/
+//double raman_linear(double alpha, double beta2)
+//{
+//  double value = 0.0;
+//  value = 45.0 * alpha * alpha + 4.0 * beta2;
+//  return value;
+//}
+//
+///* compute Raman depolarization ratio for 90-degree scattering of linearly
+//   polarized radiation:
+//
+//  ratio = [ 3 * beta(alpha)^2)/(45 * alpha^2 + 4 * beta(alpha)^2) ]
+//*/
+//double depolar_linear(double alpha, double beta2)
+//{
+//  double numer, denom;
+//
+//  numer = 3.0 * beta2;
+//  denom = (45.0 * alpha * alpha) + (4.0 * beta2);
+//
+//  if(denom > 1e-6) return numer/denom;
+//  else return 0.0;
+//}
+//
+///* compute Raman intensity for circularly polarized radiation:
+//    A = 45 (alpha^2) + 7 (beta^2);
+//*/
+//double raman_circular(double alpha, double beta2)
+//{
+//  double value = 0.0;
+//  value = 45.0 * alpha * alpha + 7.0 * beta2;
+//  return value;
+//}
+//
+//// compute Raman depolarization ratio for 90-degree scattering of circularly polarized radiation://
+//// ratio = [ 6 * beta(alpha)^2)/(45 * alpha^2 + 7 * beta(alpha)^2) ] //
+//
+//double depolar_circular(double alpha, double beta2)
+//{
+//  double numer, denom;
+//
+//  numer = 6.0 * beta2;
+//  denom = (45.0 * alpha * alpha) + (7.0 * beta2);
+//
+//  if(denom > 1e-6) return numer/denom;
+//  else return 0.0;
+//}
