@@ -78,7 +78,7 @@ void print_vibrations(boost::shared_ptr<Molecule> mol, std::vector<VIBRATION *> 
   }
 
   outfile->Printf(   "\t-----------------------------------------------\n");
-  
+
 
   // Return list of frequencies to wavefunction object.
   boost::shared_ptr<Vector> freq_vector(new Vector(modes.size()));
@@ -211,7 +211,8 @@ void displace_atom(SharedMatrix geom, const int atom, const int coord, const int
   return;
 }
 
-std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options) {
+std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options)
+{
 
   // This is the size in bohr because geometry is in bohr at this point
   // This equals 0.1 angstrom displacement
@@ -243,6 +244,56 @@ std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol
   // disp_geoms.push_back(ref_geom);
 
   return disp_geoms;
+
+}
+
+
+std::vector<SharedMatrix> mixed_atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options)
+{
+  double disp_size = options.get_double("DISP_SIZE");
+  int natom = mol->natom();
+
+  std::vector<SharedMatrix> mixed_disp_geoms;
+  std::vector<SharedMatrix> disp_geoms = atomic_displacements(mol,options);
+  for(int x =0,disp_idx=0; x < natom*3; ++x)
+  {
+    SharedMatrix disp_x_p = disp_geoms[disp_idx++];
+    for(int y =0; y <=x; y++)
+    {
+      int atom = y/3;
+      int cord = y%3;
+      SharedMatrix disp_x_p_y_p(disp_x_p->clone());
+      SharedMatrix disp_x_p_y_m(disp_x_p->clone());
+
+      displace_atom(disp_x_p_y_p, atom,cord, +1,disp_size);
+      mixed_disp_geoms.push_back(disp_x_p_y_p);
+      displace_atom(disp_x_p_y_m, atom,cord, -1,disp_size);
+      mixed_disp_geoms.push_back(disp_x_p_y_m);
+
+    }
+
+    SharedMatrix disp_x_m = disp_geoms[disp_idx++];
+    for(int y =0; y <=x; y++)
+    {
+      int atom = y/3;
+      int cord = y%3;
+      SharedMatrix disp_x_p_y_p(disp_x_p->clone());
+      SharedMatrix disp_x_p_y_m(disp_x_p->clone());
+      SharedMatrix disp_x_m_y_p(disp_x_m->clone());
+      SharedMatrix disp_x_m_y_m(disp_x_m->clone());
+
+
+      displace_atom(disp_x_m_y_p, atom,cord, +1,disp_size);
+      mixed_disp_geoms.push_back(disp_x_m_y_p);
+      displace_atom(disp_x_m_y_m, atom,cord, -1,disp_size);
+      mixed_disp_geoms.push_back(disp_x_m_y_m);
+    }
+
+  }
+
+  return mixed_disp_geoms;
+
+
 
 }
 
