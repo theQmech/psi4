@@ -44,7 +44,7 @@ from . import findif_response_utils
 
 def run_zpvc_rotation(name, **kwargs):
     """
-        Main driver for managing Zero Point Correction to Optical activity 
+        Main driver for managing Zero Point Correction to Optical activity
         computations with CC response theory.
 
         Uses distributed finite differences approach -->
@@ -85,12 +85,12 @@ def run_zpvc_rotation(name, **kwargs):
         db['zpvc_computed'] = False
 
     if 'inputs_generated' not in db:
-        findif_response_utils.initialize_database(db,name,"zpvc_rotation", ["rotation"])
+        findif_response_utils.initialize_database(db,name,"zpvc_rotation",
+                ["rotation"],additional_kwargs=None,displacement_type =2 )
 
     # Generate input files
     if not db['inputs_generated']:
-        findif_response_utils.generate_inputs(db,name)
-        # handled by helper db['inputs_generated'] = True
+        findif_response_utils.generate_inputs(db,name,displacement_type=2)
 
     # Check job status
     if db['inputs_generated'] and not db['jobs_complete']:
@@ -109,11 +109,11 @@ def run_zpvc_rotation(name, **kwargs):
             'BOTH': ['Length Gauge', 'Modified Velocity Gauge']
         }
         gauge_list = ["{} Results".format(x) for x in consider_gauge[mygauge]]
-        
+
         # Gather data
         dip_polar_list = findif_response_utils.synthesize_displaced_tensor(
             db, 'Dipole Polarizability', 3)
-        # not needed for right now but lets still pass them in case we decide 
+        # not needed for right now but lets still pass them in case we decide
         # to use them in future
         opt_rot_list = [
             x for x in (
@@ -127,7 +127,7 @@ def run_zpvc_rotation(name, **kwargs):
         ]
         dip_quad_polar_list = findif_response_utils.synthesize_displaced_tensor(
             db, "Electric-Dipole/Quadrupole Polarizability", 9)
-        # not needed for right now but lets still pass them in case we decide 
+        # not needed for right now but lets still pass them in case we decide
         # to use them in future
 
         ## Remove this block. Just a relative hack for now.

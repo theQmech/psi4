@@ -47,6 +47,7 @@ from molutil import *
 
 from .functional import *
 from .roa import *
+from .zpvc_rotation import *
 from . import proc_util
 
 # never import driver, wrappers, or aliases into this file
@@ -2028,7 +2029,8 @@ def run_cc_property(name, **kwargs):
 
     oneel_properties = ['dipole', 'quadrupole']
     twoel_properties = []
-    response_properties = ['polarizability', 'rotation', 'roa', 'roa_tensor']
+    response_properties = ['polarizability', 'rotation', 'roa',
+            'roa_tensor','zpvc_rotation']
     excited_properties = ['oscillator_strength', 'rotational_strength']
 
     one = []
@@ -2073,6 +2075,11 @@ def run_cc_property(name, **kwargs):
         # Perform distributed roa job
         run_roa(name, **kwargs)
         return  # Don't do anything further
+
+    if 'zpvc_rotation' in response:
+        # perform distributed zpvc to optical rotation
+        run_zpvc_rotation(name, **kwargs)
+        return # Don't do anything further
 
     if (n_one > 0 or n_two > 0) and (n_response > 0):
         print("""Computing both density- and response-based properties.""")
