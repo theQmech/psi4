@@ -38,7 +38,7 @@ import copy
 import os
 import psi4
 import p4util
-import numpy
+import numpy as np
 
 
 def collect_displaced_matrix_data(db, signature, row_dim):
@@ -119,35 +119,75 @@ def parse_geometry_matrix_data(outfile, matrix_name, row_tot):
 
     # END parse_geometry_matrix_data()
 
-# returns a numpy 3n x 3n matrix which is the hessian.
-def synthesize_hessian_matrix(db, signature, row_dim, natom):
+def parse_hessian_matrix(db, signature, row_dim, natom):
     """
-        To be done later on
+        Searches for file15.dat in the working directory. If found parses the
+        data line by line into a 2d array (3natom by 3natom). And returns to
+        the caller.
     """
+    hessian_read_data = []
+    mol = psi4.get_active_molecule()
+    try:
+        with open('file15.dat') as hessF:
+            for line in hessf:
+                string_ln = line.strip().split()
+                data_ln = [float(x) for x in string_ln]
+                hessain_read_data.append(data_ln)
 
-    step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
+    except IOError:
+        # python 2 raises this type
+        raise p4util.ParsingError(
+                "The hessian data {} could not be found be"
+                " sure the hessian has been generated!\n".format('file15.dat'))
+    except FileNotFoundError:
+        # python 3 raises this type
+        raise p4util.ParsingError(
+                "The hessian data {} could not be found be"
+                " sure the hessian has been generated!\n".format('file15.dat'))
 
-    alpha_list = []
-    for job in db['job_status']:
-        with open('{}/output.dat'.format(job)) as outfile:
-            tensor = parse_geometry_matrix_data(outfile, signature, row_dim)
-            alpha_list.append(sum( [tensor[3*x] for x in xrange(row_dim)] ))
+    except:
+        raise p4util.ParsingError(
+            "A problem occurred while reading the hessian data!\n")
 
-    # For the time, lets assume that alpha_list contains alphas in the order:
-    # i) Two displacements for same homogenous derivatives; and then
-    # ii) Four displacements for heterogenous ones after
-    # iii) Equilibrium displacement in the end
+    natom = mol.natom()
+    hessian = np.zeros((3*natom,3*natom))
+    for i in range(0,3*natom):
+        for j in range(0,natom):
+            data = hessian_read_data.pop(0)
+            hessian[i][3*j+1] = data[0]
+            hessian[i][3*j+1] = data[1]
+            hessian[i][3*j+1] = data[2]
 
-    eq_alpha = alpha_list.pop(-1)
+    return hessian
 
-    result = numpy.zeros((3*natom, 3*natom))
-    for i in xrange(3*natom):
-        result[i][i] = (alpha_list[2*i] - 2*eq_alpha + alpha_list[2*i + 1])/step/step
-    index = 6*natom
-    for i in xrange(3*natom):
-        for j in xrange(i):
-            result[i][j] = (alpha_list[index] - alpha_list[index+1] 
-                                        - alpha_list[index+2] + alpha_list[index+3])/4.0/step/step
-            result[j][i] = result[i][j]
 
-    return result
+
+
+
+
+    # step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
+
+    # alpha_list = []
+    # for job in db['job_status']:
+    #     with open('{}/output.dat'.format(job)) as outfile:
+    #         tensor = parse_geometry_matrix_data(outfile, signature, row_dim)
+    #         alpha_list.append(sum( [tensor[3*x] for x in xrange(row_dim)] ))
+
+    # # For the time, lets assume that alpha_list contains alphas in the order:
+    # # i) Two displacements for same homogenous derivatives; and then
+    # # ii) Four displacements for heterogenous ones after
+    # # iii) Equilibrium displacement in the end
+
+    # eq_alpha = alpha_list.pop(-1)
+
+    # result = numpy.zeros((3*natom, 3*natom))
+    # for i in xrange(3*natom):
+    #     result[i][i] = (alpha_list[2*i] - 2*eq_alpha + alpha_list[2*i + 1])/step/step
+    # index = 6*natom
+    # for i in xrange(3*natom):
+    #     for j in xrange(i):
+    #         result[i][j] = (alpha_list[index] - alpha_list[index+1]
+    #                                     - alpha_list[index+2] + alpha_list[index+3])/4.0/step/step
+    #         result[j][i] = result[i][j]
+
+    # return result
