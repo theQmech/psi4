@@ -119,11 +119,17 @@ def parse_geometry_matrix_data(outfile, matrix_name, row_tot):
 
     # END parse_geometry_matrix_data()
 
-def parse_hessian_matrix(db, signature, row_dim, natom):
+def parse_hessian_matrix():
     """
         Searches for file15.dat in the working directory. If found parses the
         data line by line into a 2d array (3natom by 3natom). And returns to
         the caller.
+
+    Throws:
+        Parsing Error if any problem comes up in reading the file15.dat data.
+        (catches both IOError(python2.x) and FileNotFoundError (python 3.x) so
+        that all errors are handeled through psi4 and not thier standard python
+        counter parts, which will not print to both stdout and output file)
     """
     hessian_read_data = []
     mol = psi4.get_active_molecule()
@@ -160,8 +166,7 @@ def parse_hessian_matrix(db, signature, row_dim, natom):
 
     return hessian
 
-
-
+    #end parse_hessian_matrix
 
 
 
