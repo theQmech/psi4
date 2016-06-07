@@ -209,6 +209,8 @@ def initialize_database(database, name, prop, properties_array,
     # Populate the job_status dict
     if displacement_type == 2:
         database['do_eq_point'] = True
+        database['eq_point_status'] = 'not_started'
+        database['eq_point_{}'.format(prop)] = 0.00
     else:
         database['do_eq_point'] = False
     initialize_job_status(database, displacement_type)
@@ -247,7 +249,28 @@ def stat(db):
             except:
                 pass
     # check all jobs done?
+    if db['do_eq_point']:
+        if db['eq_point_status'] in ('not_started','running'):
+            try:
+                with open("eq/output.dat") as eq_outfile:
+                    eq_outfile.seek(-150,2)
+                    for line in eq_outfile:
+                        if 'Pis4 exiting successfully' in line:
+                            db['eq_point_status'] = 'finished'
+                            break
+                        else:
+                            db['eq_point_status'] = 'running'
+            except:
+                pass
     if n_finished == len(db['job_status'].keys()):
-        db['jobs_complete'] = True
+        if db['do_eq_point']:
+            if db['eq_point_status'] == 'finished':
+                db['jobs_complete'] = True
+            else:
+                return
+        else:
+            db['jobs_complete'] = True
+
+
 
     # END stat()
