@@ -89,7 +89,7 @@ void print_tensor_der(boost::shared_ptr<OutFile> myfile, std::vector<SharedMatri
 void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
     Options &options,
     double step,
-    std::vector <SharedMatrix> G,
+    std::vector<SharedMatrix> G,
     SharedMatrix G0)
 {
     double mstep = options.get_double("DISP_SIZE");
@@ -102,11 +102,6 @@ void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
     int i,j,k;
     int a,b,c,d;
 
-    // grab the field freqs from input -- a few units are converted to E_h
-    //-> Do I want to handle an array of omega values,
-    //-> OR do a separate scatter call for each one??
-    //double omega = 0.085645;
-    //double omega = params.omega[0];
     int count, nomega;
     double omega;
     count = options["OMEGA"].size();
@@ -146,8 +141,35 @@ void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
     // Print the Wavelength
     outfile->Printf("\t Wavelength (in au): = %20.12f\n\n", omega);
 
+  int natom = molecule->natom();
+  double alpha_eq = tensor_mean(G0);
+  std::vector<double> alpha_diffs;
 
-    int natom = molecule->natom();
+  // Iterate through list of G' tensors, set elements of alpha_difs to the
+  // numerator of the finite differences
+  for(std::vector<SharedMatrix>::iterator G_it= G.begin(); G_it!=G.end(); ++G_it)
+  {
+    double alpha_p = tensor_mean(*G_it);
+    ++G_it;
+    double alpha_m = tensor_mean(*G_it);
+    alpha_diffs.push_back(alpha_p - 2*alpha_eq + alpha_m);
+  }
+  // construct a psi4 vector of 2nd derivatives //
+  SharedVector d2_alpha_dx2(new Vector("Cartesian 2nd Derivatives [alpha]",3*natom));
+  d2_alpha_dx2->set(alpha_diffs.data());
+  //divide each by step^2
+  d2_alpha_dx2->scale(1/(step*step));
+  std::vector<char> int2xyz={'x','y','z'};
+  outfile->Printf("\n     Cartesian 2nd Derivatives\n");
+  outfile->Printf(   "===================================\n");
+  for(int a = 0; a < natom*3; a++){
+    outfile->Printf( "d^2[alpha]/d%d_{%c}^{2}:   %10.5f\n",
+        int2xyz[a%3],
+        a/3,
+        d2_alpha_dx2->get(a));
+  }
+
+
     SharedMatrix geom(new Matrix(natom,3));
 
     // Reading in the Hessian //
