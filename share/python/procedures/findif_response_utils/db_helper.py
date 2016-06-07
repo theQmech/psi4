@@ -46,7 +46,7 @@ from p4const import *
 
 
 
-def generate_inputs(db,name,displacement_type=1):
+def generate_inputs(db,name):
     """
         Generates the input files in each sub-directory of the
         distributed finite differences property calculation.
@@ -56,27 +56,16 @@ def generate_inputs(db,name,displacement_type=1):
           calculation. On exit this db['inputs_generated'] has been set True
 
     Returns: nothing
-    Throws: Exception if the number of atomic displacements is not correct.
     """
     molecule = psi4.get_active_molecule()
     natom = molecule.natom()
     eq_geom = molecule.geometry()
-    displacement_geoms = psi4.atomic_displacements(molecule)
+    single_displacement_geoms = psi4.atomic_displacements(molecule)
 
-    if displacement_type == 2:
-        additional_geoms = psi4.mixed_atomic_displacements(molecule)
-        for x in additional_geoms:
-            displacement_geoms.append(x)
+    single_displacement_names =
+        db['jobs']['single_displacements']['job_status'].keys()
 
-    # Sanity Check
-    # there should be 3 cords * natoms *2 directions (+/-)
-    # if not (6 * natom) == len(displacement_geoms):
-    #     raise p4util.ValidationError('The number of atomic displacements should be 6 times'
-    #                     ' the number of atoms!')
-
-    displacement_names = db['job_status'].keys()
-
-    for n, entry in enumerate(displacement_names):
+    for n, entry in enumerate(single_displacement_names):
         if not os.path.exists(entry):
             os.makedirs(entry)
 
@@ -98,7 +87,33 @@ def generate_inputs(db,name,displacement_type=1):
                 jobspec=db['prop_cmd']))
         inputfile.close()
 
-    if db['do_eq_point']:
+    if 'mixed_displacements' in database['jobs'].keys():
+        mixed_displacement_names =
+            db['jobs']['mixed_displacements']['job_status'].keys()
+        mixed_displacement_geoms = psi4.mixed_atomic_displacements(molecule)
+        for n, entry in enumerate(mixed_displacment_names):
+            if not os.path.exists(entry):
+                os.makedirs(entry)
+
+            inp_template = 'molecule {molname}_{disp}'
+            inp_template += ' {{\n{molecule_info}\n}}\n{options}\n{jobspec}\n'
+            molecule.set_geometry(displacement_geoms[n])
+            molecule.fix_orientation(True)
+            molecule.fix_com(True)
+            inputfile = open('{0}/input.dat'.format(entry), 'w')
+            inputfile.write("# This is a psi4 input file auto-generated for"
+                "computing properties by finite differences.\n\n")
+            inputfile.write(
+                inp_template.format(
+                    molname=molecule.name(),
+                    disp=entry,
+                    molecule_info=molecule.create_psi4_string_from_molecule(),
+                    options=p4util.format_options_for_input(),
+                    jobspec=db['prop_cmd']))
+            inputfile.close()
+
+
+    if 'eq_point' in database['jobs'].keys():
         if not os.path.exists('eq'):
             os.makedirs('eq')
         inp_template = 'molecule {molname}_{disp}'
@@ -123,36 +138,49 @@ def generate_inputs(db,name,displacement_type=1):
 
     # END generate_inputs
 
-def initialize_job_status(database,displacement_type=1):
+def initialize_job_status(database):
     """
         Initialize the ordered dict containing job_names and their status.
 
     database: (database) the databse object passed from the caller
-    displacement_type: (int) the order of the partial derivatives being
-        computed defaults to 1, which will generate list of singly displaced
-        geometries. Currently the only additional accepted value is 2 which
-        will generate a list of the singly displaced geoms, and for every geom
-        that is singly displaced every coordinate greater than or equal to it
-        is also displaced. Coordinates indexed by 0-3*natom.
 
     Returns: nothing
-    Throws: ValidationError if the requested displacement type is unavailable.
     """
-    database['job_status'] = collections.OrderedDict()
-    molecule = psi4.get_active_molecule()
     natom = molecule.natom()
+    molecule = psi4.get_active_molecule()
     coordinates = ['x', 'y', 'z']
     step_direction = ['p', 'm']
     count = 0
+    # create job_status dict for each job type
+    for jb_type in database['jobs']:
+        database['jobs'][jb_type].update(
+            {'job_status': collections.OrderedDict()}
+            )
+
+    # The ordering of the job names here also matches up with the
+    # return ordering from the functions which create the displaced
+    # geometries. I would prefer those lookups created a dict (std::map)
+    # but for now that would be too much to overhaul
+    # always have single displacements so set them up
+
     for atom in range(1,natom+1):
         for idx,coord in enumerate(coordinates):
             for step in step_direction:
-                job_name_base = "{}_{}_{}".format(atom,coord,step)
-                database['job_status'].update(
-                    {job_name_base: 'not_started'})
+                job_name= "{}_{}_{}".format(atom,coord,step)
+                database['jobs']['single_displacements']['job_status'].update(
+                    {job_name: 'not_started'})
+                # print statements for debug
                 print( "added element {}: {}".format(count,job_name_base) )
                 count +=1
-    if displacement_type == 2:
+
+    # displacements generated in the same order (convenient later when writing
+    # input files!). Each Cartesian coordinate coord1 (3* natom total) are displaced
+    # then for every coordinate from 0 to coord1 inclusive are displaced. This
+    # generated all displacements needed to compute the lower triangle of the
+    # 2nd derivatives, less the main diagonal. The main diagonal is computed
+    # using the singly displaced coordinates in the single_displacements list,
+    # and the eq point.
+    if 'mixed_displacements' in database['jobs'].keys():
         for i in range(0,natom*3):
             coord1 = i%3
             atom1 = i/3
@@ -164,14 +192,27 @@ def initialize_job_status(database,displacement_type=1):
                         job_name = "{}_{}_{}_{}_{}_{}".format(
                         atom1+1,coordinates[coord1],step1,
                         atom2+1,coordinates[coord2],step2)
-                        print( "added element {}: {}".format(count,job_name) )
-                        database['job_status'].update(
+                        database['jobs']['mixed_displacements']['job_status'].update(
                         {job_name: 'not_started'})
+                        # debug printing and count
+                        print( "added element {}: {}".format(count,job_name))
                         count +=1
 
 
+    if 'eq_point' in database['jobs'].keys():
+        database['jobs']['eq_point']['job_status'].update(
+            {'eq': 'not_started'}
+            )
+        print(" added element {}: eq_point".format(count))
+        count +=1
+
+    print("initialized {} job status indicator string total".format(count))
+
+
+
+
 def initialize_database(database, name, prop, properties_array,
-        additional_kwargs=None, displacement_type =1):
+        additional_kwargs = None, displacement_type = 1):
     """
         Initialize the database for computation of some property
         using distributed finite differences driver
@@ -206,14 +247,25 @@ def initialize_database(database, name, prop, properties_array,
             prop_cmd += ", {}".format(arg)
     prop_cmd += ")"
     database['prop_cmd'] = prop_cmd
-    # Populate the job_status dict
+
+    # Populate the jobs dict, create dict for each 'type' of job
+    # so far this organization makes sense for all routines
+    # this may need to change later
+    database['jobs'] = collections.OrderedDict()
+    database['jobs'].update(
+        {'single_displacements': collections.OrderedDict()}
+        )
+    # if we need 2nd derivatives, generate their dict
+    # also one for the eq point
     if displacement_type == 2:
-        database['do_eq_point'] = True
-        database['eq_point_status'] = 'not_started'
-        database['eq_point_{}'.format(prop)] = 0.00
-    else:
-        database['do_eq_point'] = False
-    initialize_job_status(database, displacement_type)
+        database['jobs'].update(
+            {'mixed_displacements': collections.OrderedDict()}
+            )
+        database['jobs'].update(
+            {'eq_point': collections.OrderedDict()}
+            )
+
+    initialize_job_status(database)
 
     database['{}_computed'.format(prop)] = False
 
@@ -232,44 +284,28 @@ def stat(db):
     Throws: nothing
     """
     n_finished = 0
-    for job, status in db['job_status'].items():
-        if status == 'finished':
-            n_finished += 1
-        elif status in ('not_started', 'running'):
-            try:
-                with open("{}/output.dat".format(job)) as outfile:
-                    outfile.seek(-150, 2)
-                    for line in outfile:
-                        if 'Psi4 exiting successfully' in line:
-                            db['job_status'][job] = 'finished'
-                            n_finished += 1
-                            break
-                        else:
-                            db['job_status'][job] = 'running'
-            except:
-                pass
-    # check all jobs done?
-    if db['do_eq_point']:
-        if db['eq_point_status'] in ('not_started','running'):
-            try:
-                with open("eq/output.dat") as eq_outfile:
-                    eq_outfile.seek(-150,2)
-                    for line in eq_outfile:
-                        if 'Pis4 exiting successfully' in line:
-                            db['eq_point_status'] = 'finished'
-                            break
-                        else:
-                            db['eq_point_status'] = 'running'
-            except:
-                pass
-    if n_finished == len(db['job_status'].keys()):
-        if db['do_eq_point']:
-            if db['eq_point_status'] == 'finished':
-                db['jobs_complete'] = True
-            else:
-                return
-        else:
-            db['jobs_complete'] = True
+    n_total = 0
+    for job_type in db['jobs'].keys():
+        n_total += len(db['jobs'][job_type]['job_status'])
+        for job, status in db['jobs'][job_type]['job_status']:
+            if status == 'finished':
+                n_finished += 1
+            elif status in ('not_started', 'running'):
+                try:
+                    with open("{}/output.dat".format(job)) as outfile:
+                        outfile.seek(-150, 2)
+                        for line in outfile:
+                            if 'Psi4 exiting successfully' in line:
+                                db['jobs'][job_type]['jobs_status'][job] = 'finished'
+                                n_finished += 1
+                                break
+                            else:
+                                db['jobs'][job_type]['jobs_status'][job] = 'running'
+                except:
+                    pass
+    if n_finished == n_total:
+        db['jobs_complete'] = True
+
 
 
 
