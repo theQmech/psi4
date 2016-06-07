@@ -111,13 +111,9 @@ def run_zpvc_rotation(name, **kwargs):
         gauge_list = ["{} Results".format(x) for x in consider_gauge[mygauge]]
 
         # Gather data
-        dip_polar_list = findif_response_utils.synthesize_displaced_tensor(
-            db, 'Dipole Polarizability', 3)
-        # not needed for right now but lets still pass them in case we decide
-        # to use them in future
         opt_rot_list = [
             x for x in (
-                findif_response_utils.synthesize_displaced_tensor(
+                findif_response_utils.collect_displaced_matrix_data(
                     db,
                     "Optical Rotation Tensor ({})".format(gauge),
                     3
@@ -125,20 +121,16 @@ def run_zpvc_rotation(name, **kwargs):
                 for gauge in consider_gauge[mygauge]
             )
         ]
-        dip_quad_polar_list = findif_response_utils.synthesize_displaced_tensor(
-            db, "Electric-Dipole/Quadrupole Polarizability", 9)
-        # not needed for right now but lets still pass them in case we decide
-        # to use them in future
+        eq_rotation = []
+        with open("eq/output.dat") as eq_outfile:
+            eq_ration = [
+                findif_response_utils.parse_geometry_matrix(
+                    eq_outfile,
+                    "Optical Rotation Tensor ({})".format(gauge)
+                ) for gauge in consider_gauge[mygauge]
+            ]
 
-        ## Remove this block. Just a relative hack for now.
-        os.system("sed -i -e 's/roa/rotation/' input.dat")
-        os.system("psi4")
-        os.system("sed -i -e 's/rotation/roa/' input.dat")
-        ###################################################
 
-        # Compute corrections
-        # Run new function (src/bin/ccresponse/zpvc_rotation.cc)
-        # Not yet completed the above file ^
         psi4.print_out('Running zpvc function(not yet completed, so skipping)')
         step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
         for g_idx, gauge in enumerate(opt_rot_list):
@@ -150,7 +142,8 @@ def run_zpvc_rotation(name, **kwargs):
             psi4.print_out('----------------------------------------------------------------------\n\n')
             print('roa.py:85 I am not being passed a molecule, grabbing from global :( LoL')
             # psi4.scatter(psi4.get_active_molecule(), step, dip_polar_list, gauge, dip_quad_polar_list)
-            psi4.zpvc_rotation(psi4.get_active_molecule(), step, dip_polar_list, gauge, dip_quad_polar_list)
+            psi4.zpvc_rotation(
+                    psi4.get_active_molecule(), step, gauge,eq_rotation[g_idx])
 
         db['zpvc_computed'] = True
 
