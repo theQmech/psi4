@@ -247,6 +247,19 @@ std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol
 
 }
 
+/*
+ * mixed_atomic_displacements:
+ *  Generates displaced geometries by displacing two of the 3n Cartesian coordinates at a
+ *  time.
+ *  For every atom N1 the coordinate x1 is displaced +/- directions.
+ *  For each of those displaced geometries all atoms N2 <= N1 and all
+ *  coordinates {x2: x,y,z if N2<N1; x2 <x1 if N2=N1} are displaced in +/-
+ *  directions.
+ *
+ *  ONLY the mixed displacement geometries are retuned, the atomic_displacement
+ *  function that is used here should be used to return the single
+ *  displacements.
+ */
 
 std::vector<SharedMatrix> mixed_atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options)
 {
@@ -258,7 +271,7 @@ std::vector<SharedMatrix> mixed_atomic_displacements(boost::shared_ptr<Molecule>
   for(int x =0,disp_idx=0; x < natom*3; ++x)
   {
     SharedMatrix disp_x_p = disp_geoms[disp_idx++];
-    for(int y =0; y <=x; y++)
+    for(int y =0; y <x; y++)
     {
       int atom = y/3;
       int cord = y%3;
@@ -273,7 +286,7 @@ std::vector<SharedMatrix> mixed_atomic_displacements(boost::shared_ptr<Molecule>
     }
 
     SharedMatrix disp_x_m = disp_geoms[disp_idx++];
-    for(int y =0; y <=x; y++)
+    for(int y =0; y <x; y++)
     {
       int atom = y/3;
       int cord = y%3;
