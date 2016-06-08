@@ -139,33 +139,70 @@ def run_zpvc_rotation(name, **kwargs):
                     3)
                 )
 
-        print("\teq opt_rot Tensor\n")
+        t = [opt_rot_single, opt_rot_mixed, opt_rot_eq]
+        [alpha_single, alpha_mixed, alpha_eq] = 
+            [ [ ([(sum([w[3*q] for q in xrange(3)]))/3.0 for w in e]) for e in r] for r in t ]
 
-        print ("\tsingle displacement opt_rot Tensors\n")
-        print("\t\t---->1_y_m <--- CHECK!\n")
-        print("\t\t---->L-Gauge <----\n")
-        line = opt_rot_single[0][3]
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
-        print("\t\t ----> MV-Gauge <----\n")
-        line = opt_rot_single[1][3]
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+        step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
 
-        print ("\tmixed displacement opt_rot Tensors\n")
-        print("\t\t---->1_z_p_1_x_p --- CHECK!\n")
-        line = opt_rot_single[0][4]
-        print("\t\t---->L-Gauge <----\n")
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
-        line = opt_rot_single[1][4]
-        print("\t\t ----> MV-Gauge <----\n")
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+        for i in xrange(len(consider_gauge[mygauge])):
+            deriv_list = []
+            for j in xrange(len(opt_rot_single)):
+                curr_list = []
+                for k in xrange(j+1):
+                    
+                    if (k == j):
+                        val = alpha_single[i][2*j] + alpha_single[i][2*j + 1]
+                                    - 2*alpha_eq[i][0]
+                        val /= step
+                        val /= step
+                    else:
+                        val = alpha_mixed[i][idx(2*j, 2*k)] 
+                                + alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
+                                - alpha_mixed[i][idx(2*j, 2*k - 1)] 
+                                - alpha_mixed[i][idx(2*j - 1, 2*k)]
+                        val /= 4
+                        val /= step
+                        val /= step
+
+                    curr_list.append(val)
+
+                deriv_list.append(curr_list)
+
+            ## Call function and print result
+            psi4.zpvc_rotation(psi4.get_active_molecule(), deriv_list)
+            ## Do the necessary parts over here
+
+
+        # print("\teq opt_rot Tensor\n")
+
+        # print ("\tsingle displacement opt_rot Tensors\n")
+        # print("\t\t---->1_y_m <--- CHECK!\n")
+        # print("\t\t---->L-Gauge <----\n")
+        # line = opt_rot_single[0][3]
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+        # print("\t\t ----> MV-Gauge <----\n")
+        # line = opt_rot_single[1][3]
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+
+        # print ("\tmixed displacement opt_rot Tensors\n")
+        # print("\t\t---->1_z_p_1_x_p --- CHECK!\n")
+        # line = opt_rot_single[0][4]
+        # print("\t\t---->L-Gauge <----\n")
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+        # line = opt_rot_single[1][4]
+        # print("\t\t ----> MV-Gauge <----\n")
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+
+
 
     #TODO:
     # - compute 2nd derivatives Cartesian
@@ -182,6 +219,11 @@ def run_zpvc_rotation(name, **kwargs):
         db['zpvc_computed'] = True
 
     db.close()
+
+def idx(j, k):
+    if j < k:
+        swap(j,k)
+    return ((2 + (j%2))*(2**(j/2)) -4 + k)
 
 #   SAVE this for when multiple wavelengths works
 # # Get list of omega values
