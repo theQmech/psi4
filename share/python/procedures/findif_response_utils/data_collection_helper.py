@@ -41,7 +41,7 @@ import p4util
 import numpy as np
 
 
-def collect_displaced_matrix_data(db, signature, row_dim):
+def collect_displaced_matrix_data(displacements, signature, row_dim):
     """
         Gathers a list of tensors, one at each displaced geometry.
 
@@ -57,7 +57,7 @@ def collect_displaced_matrix_data(db, signature, row_dim):
     Throws: none
     """
     result = []
-    for job in db['job_status']:
+    for job in displacements:
         with open('{}/output.dat'.format(job)) as outfile:
             result.append(parse_geometry_matrix_data(outfile, signature, row_dim))
 

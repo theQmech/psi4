@@ -59,7 +59,7 @@ def run_zpvc_rotation(name, **kwargs):
     # Catch this now before any real work gets done
     omega = psi4.get_option('CCRESPONSE', 'OMEGA')
     if len(omega) > 2:
-        raise Exception('ZPVC_rotation can only be performed for one wavelength.')
+        raise p4util.ValidationError('ZPVC_rotation can only be performed for one wavelength.')
     else:
         pass
 
@@ -73,16 +73,16 @@ def run_zpvc_rotation(name, **kwargs):
     # Check if final result is in here
     # ->if we have already computed property, back up the dict
     # ->copy it setting this flag to false and continue
-    if ('zpvc_computed' in db) and ( db['zpvc_computed'] ):
-        db2 = shelve.open('.database.bak{}'.format(dbno), writeback=True)
-        dbno += 1
-        for key,value in db.iteritems():
-            db2[key]=value
+    # if ('zpvc_computed' in db) and ( db['zpvc_computed'] ):
+    #     db2 = shelve.open('.database.bak{}'.format(dbno), writeback=True)
+    #     dbno += 1
+    #     for key,value in db.iteritems():
+    #         db2[key]=value
 
-        db2.close()
-        db['zpvc_computed'] = False
-    else:
-        db['zpvc_computed'] = False
+    #     db2.close()
+    #     db['zpvc_computed'] = False
+    # else:
+    #     db['zpvc_computed'] = False
 
     if 'inputs_generated' not in db:
         findif_response_utils.initialize_database(db,name,"zpvc_rotation",
@@ -90,14 +90,16 @@ def run_zpvc_rotation(name, **kwargs):
 
     # Generate input files
     if not db['inputs_generated']:
-        findif_response_utils.generate_inputs(db,name,displacement_type=2)
+        findif_response_utils.generate_inputs(db,name)
 
     # Check job status
     if db['inputs_generated'] and not db['jobs_complete']:
         print('Checking status')
         findif_response_utils.stat(db)
-        for job, status in db['job_status'].items():
-            print("{} --> {}".format(job, status))
+        for job_type in db['jobs']:
+            print ("Checking {} jobs".format(job_type))
+            for job,status in db['jobs'][job_type]['job_status'].items():
+                print("{} --> {}".format(job, status))
 
     # Compute ZPVC_rotation
     if db['jobs_complete']:
@@ -110,40 +112,72 @@ def run_zpvc_rotation(name, **kwargs):
         }
         gauge_list = ["{} Results".format(x) for x in consider_gauge[mygauge]]
 
-        # Gather data
-        opt_rot_list = [
-            x for x in (
+        opt_rot_single = []
+        opt_rot_mixed = []
+        opt_rot_eq = []
+        for gauge in consider_gauge[mygauge]:
+            # Gather data from single_displacements
+            opt_rot_single.append(
                 findif_response_utils.collect_displaced_matrix_data(
-                    db,
+                    db['jobs']['single_displacements']['job_status'].keys(),
                     "Optical Rotation Tensor ({})".format(gauge),
-                    3
+                    3)
                 )
-                for gauge in consider_gauge[mygauge]
-            )
-        ]
-        eq_rotation = []
-        with open("eq/output.dat") as eq_outfile:
-            eq_ration = [
-                findif_response_utils.parse_geometry_matrix(
-                    eq_outfile,
-                    "Optical Rotation Tensor ({})".format(gauge)
-                ) for gauge in consider_gauge[mygauge]
-            ]
+            # Gather data from mixed displacements
+            opt_rot_mixed.append(
+                findif_response_utils.collect_displaced_matrix_data(
+                    db['jobs']['mixed_displacements']['job_status'].keys(),
+                    ""
+                    "Optical Rotation Tensor ({})".format(gauge),
+                    3)
+                )
+            # Gather data from equilibrium point
+            opt_rot_eq.append(
+                findif_response_utils.collect_displaced_matrix_data(
+                    db['jobs']['eq_point']['job_status'].keys(),
+                    "Optical Rotation Tensor ({})".format(gauge),
+                    3)
+                )
 
+        print("\teq opt_rot Tensor\n")
 
-        psi4.print_out('Running zpvc function(not yet completed, so skipping)')
-        step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
-        for g_idx, gauge in enumerate(opt_rot_list):
-            print('\n\n----------------------------------------------------------------------')
-            print('\t%%%%%%%%%% {} %%%%%%%%%%'.format(gauge_list[g_idx]))
-            print('----------------------------------------------------------------------\n\n')
-            psi4.print_out('\n\n----------------------------------------------------------------------\n')
-            psi4.print_out('\t%%%%%%%%%% {} %%%%%%%%%%\n'.format(gauge_list[g_idx]))
-            psi4.print_out('----------------------------------------------------------------------\n\n')
-            print('roa.py:85 I am not being passed a molecule, grabbing from global :( LoL')
-            # psi4.scatter(psi4.get_active_molecule(), step, dip_polar_list, gauge, dip_quad_polar_list)
-            psi4.zpvc_rotation(
-                    psi4.get_active_molecule(), step, gauge,eq_rotation[g_idx])
+        print ("\tsingle displacement opt_rot Tensors\n")
+        print("\t\t---->1_y_m <--- CHECK!\n")
+        print("\t\t---->L-Gauge <----\n")
+        line = opt_rot_single[0][3]
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+        print("\t\t ----> MV-Gauge <----\n")
+        line = opt_rot_single[1][3]
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+
+        print ("\tmixed displacement opt_rot Tensors\n")
+        print("\t\t---->1_z_p_1_x_p --- CHECK!\n")
+        line = opt_rot_single[0][4]
+        print("\t\t---->L-Gauge <----\n")
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+        line = opt_rot_single[1][4]
+        print("\t\t ----> MV-Gauge <----\n")
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
+        print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
+
+    #TODO:
+    # - compute 2nd derivatives Cartesian
+    # - read hessian
+    # - compute normal mode vectors
+    # - build rotation-translation projector
+    # - transform 2nd derivatives Cartesian to normal modes
+    # - project out rotation and translations
+    # - compute zpvc to optical rotation
+    # - report rotation @ eq-point
+    # - report correction alone
+    # - report total rotation+correction
 
         db['zpvc_computed'] = True
 

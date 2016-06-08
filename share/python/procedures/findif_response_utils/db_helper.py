@@ -62,8 +62,7 @@ def generate_inputs(db,name):
     eq_geom = molecule.geometry()
     single_displacement_geoms = psi4.atomic_displacements(molecule)
 
-    single_displacement_names =
-        db['jobs']['single_displacements']['job_status'].keys()
+    single_displacement_names = db['jobs']['single_displacements']['job_status'].keys()
 
     for n, entry in enumerate(single_displacement_names):
         if not os.path.exists(entry):
@@ -72,7 +71,7 @@ def generate_inputs(db,name):
         # Setup up input file string
         inp_template = 'molecule {molname}_{disp}'
         inp_template += ' {{\n{molecule_info}\n}}\n{options}\n{jobspec}\n'
-        molecule.set_geometry(displacement_geoms[n])
+        molecule.set_geometry(single_displacement_geoms[n])
         molecule.fix_orientation(True)
         molecule.fix_com(True)
         inputfile = open('{0}/input.dat'.format(entry), 'w')
@@ -87,17 +86,16 @@ def generate_inputs(db,name):
                 jobspec=db['prop_cmd']))
         inputfile.close()
 
-    if 'mixed_displacements' in database['jobs'].keys():
-        mixed_displacement_names =
-            db['jobs']['mixed_displacements']['job_status'].keys()
+    if 'mixed_displacements' in db['jobs'].keys():
+        mixed_displacement_names = db['jobs']['mixed_displacements']['job_status'].keys()
         mixed_displacement_geoms = psi4.mixed_atomic_displacements(molecule)
-        for n, entry in enumerate(mixed_displacment_names):
+        for n, entry in enumerate(mixed_displacement_names):
             if not os.path.exists(entry):
                 os.makedirs(entry)
 
             inp_template = 'molecule {molname}_{disp}'
             inp_template += ' {{\n{molecule_info}\n}}\n{options}\n{jobspec}\n'
-            molecule.set_geometry(displacement_geoms[n])
+            molecule.set_geometry(mixed_displacement_geoms[n])
             molecule.fix_orientation(True)
             molecule.fix_com(True)
             inputfile = open('{0}/input.dat'.format(entry), 'w')
@@ -113,7 +111,7 @@ def generate_inputs(db,name):
             inputfile.close()
 
 
-    if 'eq_point' in database['jobs'].keys():
+    if 'eq_point' in db['jobs'].keys():
         if not os.path.exists('eq'):
             os.makedirs('eq')
         inp_template = 'molecule {molname}_{disp}'
@@ -146,8 +144,8 @@ def initialize_job_status(database):
 
     Returns: nothing
     """
-    natom = molecule.natom()
     molecule = psi4.get_active_molecule()
+    natom = molecule.natom()
     coordinates = ['x', 'y', 'z']
     step_direction = ['p', 'm']
     count = 0
@@ -170,7 +168,7 @@ def initialize_job_status(database):
                 database['jobs']['single_displacements']['job_status'].update(
                     {job_name: 'not_started'})
                 # print statements for debug
-                print( "added element {}: {}".format(count,job_name_base) )
+                print( "added element {}: {}".format(count,job_name) )
                 count +=1
 
     # displacements generated in the same order (convenient later when writing
@@ -185,6 +183,10 @@ def initialize_job_status(database):
             coord1 = i%3
             atom1 = i/3
             for step1 in step_direction:
+                # we don't need cases where i and j are equal so this is fine
+                # the case where they are equal would be for the diagonal
+                # elements of the 4th derivatives using the form we are here
+                # these points may be needed if we change to a different scheme
                 for j in range(0,i):
                     atom2 = j/3
                     coord2 = j%3
@@ -287,7 +289,7 @@ def stat(db):
     n_total = 0
     for job_type in db['jobs'].keys():
         n_total += len(db['jobs'][job_type]['job_status'])
-        for job, status in db['jobs'][job_type]['job_status']:
+        for job, status in db['jobs'][job_type]['job_status'].items():
             if status == 'finished':
                 n_finished += 1
             elif status in ('not_started', 'running'):
@@ -295,12 +297,12 @@ def stat(db):
                     with open("{}/output.dat".format(job)) as outfile:
                         outfile.seek(-150, 2)
                         for line in outfile:
-                            if 'Psi4 exiting successfully' in line:
-                                db['jobs'][job_type]['jobs_status'][job] = 'finished'
+                            if 'Psi4 exiting successfully.' in line:
+                                db['jobs'][job_type]['job_status'][job] = 'finished'
                                 n_finished += 1
                                 break
                             else:
-                                db['jobs'][job_type]['jobs_status'][job] = 'running'
+                                db['jobs'][job_type]['job_status'][job] = 'running'
                 except:
                     pass
     if n_finished == n_total:
