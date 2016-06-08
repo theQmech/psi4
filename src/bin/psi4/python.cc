@@ -177,6 +177,7 @@ namespace ccresponse {
 PsiReturnType ccresponse(SharedWavefunction, Options&);
 void scatter(boost::shared_ptr<Molecule> molecule, Options&, double step, std::vector<SharedMatrix> dip,
              std::vector<SharedMatrix> rot, std::vector<SharedMatrix> quad);
+double  zpvc_rotation(boost::shared_ptr<Molecule> molecule, Options&, SharedMatrix d2_alpha_dx2);
 }
 namespace cceom { PsiReturnType cceom(SharedWavefunction, Options&); }
 
@@ -575,6 +576,32 @@ void py_psi_print_list(python::list py_list)
 {
     return;
 }
+
+double py_psi_zpvc_rotation(
+    boost::shared_ptr<Molecule> molecule,
+    python::list D2_rot_list // 2nd derivatives, lower triangular list of lists
+    )
+{
+  py_psi_prepare_options_for_module("CCRESPONSE");
+  int natom = molecule->natom();
+  SharedMatrix D2_rot_mat(new Matrix(3*natom,3*natom));
+  int slow_list_len = len(D2_rot_list);
+  for(int i = 0; i < slow_list_len; ++i){
+    python::list row_values = extract<python::list>(D2_rot_list[i]);
+    // off diagonal elements //
+    for(int j = 0; j < i; ++j){
+      double valij = extract<double>(row_values[j]);
+      D2_rot_mat->set(i,j,valij);
+      D2_rot_mat->set(j,i,valij);
+    }
+    // diagonal element should be the last in each sub-list
+    double valii = extract<double>(row_values[i]);
+    D2_rot_mat->set(i,i,valii);
+  }
+  double correction = ccresponse::zpvc_rotation(molecule,Process::environment.options, D2_rot_mat);
+  return correction;
+}
+
 
 void py_psi_scatter(boost::shared_ptr<Molecule> molecule, double step, python::list dip_polar_list, python::list opt_rot_list,
                     python::list dip_quad_polar_list)
@@ -1560,6 +1587,7 @@ BOOST_PYTHON_MODULE (psi4)
     def("ccdensity", py_psi_ccdensity, "Runs the code to compute coupled cluster density matrices.");
     def("ccresponse", py_psi_ccresponse, "Runs the coupled cluster response theory code.");
     def("scatter", py_psi_scatter, "New Scatter function.");
+    def("zpvc_rotation", py_psi_zpvc_rotation, "Compute the zpvc to optical rotation");
     def("cceom", py_psi_cceom, "Runs the equation of motion coupled cluster code, for excited states.");
     def("occ", py_psi_occ, "Runs the orbital optimized CC codes.");
     def("dfocc", py_psi_dfocc, "Runs the density-fitted orbital optimized CC codes.");
@@ -1609,7 +1637,7 @@ std::string handle_pyerror()
     PyObject *exc,*val,*tb;
     object formatted_list, formatted;
     PyErr_Fetch(&exc,&val,&tb);
-    handle<> hexc(exc),hval(allow_null(val)),htb(allow_null(tb)); 
+    handle<> hexc(exc),hval(allow_null(val)),htb(allow_null(tb));
     object traceback(import("traceback"));
     if (!tb) {
         object format_exception_only(traceback.attr("format_exception_only"));
