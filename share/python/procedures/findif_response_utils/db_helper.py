@@ -148,7 +148,6 @@ def initialize_job_status(database):
     natom = molecule.natom()
     coordinates = ['x', 'y', 'z']
     step_direction = ['p', 'm']
-    count = 0
     # create job_status dict for each job type
     for jb_type in database['jobs']:
         database['jobs'][jb_type].update(
@@ -167,9 +166,6 @@ def initialize_job_status(database):
                 job_name= "{}_{}_{}".format(atom,coord,step)
                 database['jobs']['single_displacements']['job_status'].update(
                     {job_name: 'not_started'})
-                # print statements for debug
-                print( "added element {}: {}".format(count,job_name) )
-                count +=1
 
     # displacements generated in the same order (convenient later when writing
     # input files!). Each Cartesian coordinate coord1 (3* natom total) are displaced
@@ -196,19 +192,13 @@ def initialize_job_status(database):
                         atom2+1,coordinates[coord2],step2)
                         database['jobs']['mixed_displacements']['job_status'].update(
                         {job_name: 'not_started'})
-                        # debug printing and count
-                        print( "added element {}: {}".format(count,job_name))
-                        count +=1
 
 
     if 'eq_point' in database['jobs'].keys():
         database['jobs']['eq_point']['job_status'].update(
             {'eq': 'not_started'}
             )
-        print(" added element {}: eq_point".format(count))
-        count +=1
 
-    print("initialized {} job status indicator string total".format(count))
 
 
 
