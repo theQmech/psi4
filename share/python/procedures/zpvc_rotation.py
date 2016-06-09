@@ -139,15 +139,45 @@ def run_zpvc_rotation(name, **kwargs):
                     3)
                 )
 
-        t = [opt_rot_single, opt_rot_mixed, opt_rot_eq]
-        [alpha_single, alpha_mixed, alpha_eq] = 
-            [ [ ([(sum([w[3*q] for q in xrange(3)]))/3.0 for w in e]) for e in r] for r in t ]
+        # tmp = [opt_rot_single, opt_rot_mixed, opt_rot_eq]
+        # [alpha_single, alpha_mixed, alpha_eq] = 
+        #     [ 
+        #         [ 
+        #             ([(sum([tensor[4*index] for index in xrange(3)]))/3.0 for tensor in guage]) 
+        #         for guage in disp_type
+        #         ] 
+        #     for disp_type in tmp 
+        #     ]
+
+        alpha_single = [
+            [ 
+                sum([tensor[4*index] for index in xrange(3)]) for tensor in guage
+            ] 
+        for guage in opt_rot_single
+        ]
+
+        alpha_mixed = [
+            [ 
+                sum([tensor[4*index] for index in xrange(3)]) for tensor in guage
+            ] 
+        for guage in opt_rot_mixed
+        ]
+
+        alpha_eq = [
+            [ 
+                sum([tensor[4*index] for index in xrange(3)]) for tensor in guage
+            ] 
+        for guage in opt_rot_eq
+        ]
 
         step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
 
         for i in xrange(len(consider_gauge[mygauge])):
             deriv_list = []
-            for j in xrange(len(opt_rot_single)):
+            for j in xrange(len(opt_rot_single)/2):
+            # j enumerates the 3n coordinates
+            # '2j' is displacement in +ve direction in coordinate 'j'
+            # '2j+1' in the -ve direction
                 curr_list = []
                 for k in xrange(j+1):
                     
@@ -159,8 +189,8 @@ def run_zpvc_rotation(name, **kwargs):
                     else:
                         val = alpha_mixed[i][idx(2*j, 2*k)] 
                                 + alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
-                                - alpha_mixed[i][idx(2*j, 2*k - 1)] 
-                                - alpha_mixed[i][idx(2*j - 1, 2*k)]
+                                - alpha_mixed[i][idx(2*j, 2*k + 1)] 
+                                - alpha_mixed[i][idx(2*j + 1, 2*k)]
                         val /= 4
                         val /= step
                         val /= step
@@ -173,45 +203,12 @@ def run_zpvc_rotation(name, **kwargs):
             psi4.zpvc_rotation(psi4.get_active_molecule(), deriv_list)
             ## Do the necessary parts over here
 
-
-        # print("\teq opt_rot Tensor\n")
-
-        # print ("\tsingle displacement opt_rot Tensors\n")
-        # print("\t\t---->1_y_m <--- CHECK!\n")
-        # print("\t\t---->L-Gauge <----\n")
-        # line = opt_rot_single[0][3]
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
-        # print("\t\t ----> MV-Gauge <----\n")
-        # line = opt_rot_single[1][3]
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
-
-        # print ("\tmixed displacement opt_rot Tensors\n")
-        # print("\t\t---->1_z_p_1_x_p --- CHECK!\n")
-        # line = opt_rot_single[0][4]
-        # print("\t\t---->L-Gauge <----\n")
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
-        # line = opt_rot_single[1][4]
-        # print("\t\t ----> MV-Gauge <----\n")
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[0],line[1],line[2]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[3],line[4],line[5]))
-        # print(" {0:<12.7f}{1:<12.7f}{2:<12.7f}\n".format(line[6],line[7],line[8]))
-
-
-
     #TODO:
     # - compute 2nd derivatives Cartesian
     # - read hessian
     # - compute normal mode vectors
     # - build rotation-translation projector
     # - transform 2nd derivatives Cartesian to normal modes
-    # - project out rotation and translations
-    # - compute zpvc to optical rotation
     # - report rotation @ eq-point
     # - report correction alone
     # - report total rotation+correction
@@ -220,6 +217,8 @@ def run_zpvc_rotation(name, **kwargs):
 
     db.close()
 
+# Function that gives index corresponding to (j, k)
+# Here j, k correspond to displacements for example, "1_y_m", "1_x_p" etc. 
 def idx(j, k):
     if j < k:
         swap(j,k)
