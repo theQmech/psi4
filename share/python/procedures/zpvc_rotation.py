@@ -180,20 +180,21 @@ def run_zpvc_rotation(name, **kwargs):
             # '2j+1' in the -ve direction
                 curr_list = []
                 for k in xrange(j+1):
+                    val = 0.0
                     
                     if (k == j):
-                        val = alpha_single[i][2*j] + alpha_single[i][2*j + 1]
-                                    - 2*alpha_eq[i][0]
-                        val /= step
-                        val /= step
+                        numr = alpha_single[i][2*j] 
+                        numr += alpha_single[i][2*j + 1] 
+                        numr -= 2*alpha_eq[i][0]
+                        
+                        val = numr/(step*step)
                     else:
-                        val = alpha_mixed[i][idx(2*j, 2*k)] 
-                                + alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
-                                - alpha_mixed[i][idx(2*j, 2*k + 1)] 
-                                - alpha_mixed[i][idx(2*j + 1, 2*k)]
-                        val /= 4
-                        val /= step
-                        val /= step
+                        numr = alpha_mixed[i][idx(2*j, 2*k)] 
+                        numr += alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
+                        numr -= alpha_mixed[i][idx(2*j, 2*k + 1)] 
+                        numr -= alpha_mixed[i][idx(2*j + 1, 2*k)]
+                        
+                        val = numr/(4*step*step)
 
                     curr_list.append(val)
 
@@ -209,6 +210,8 @@ def run_zpvc_rotation(name, **kwargs):
     # - compute normal mode vectors
     # - build rotation-translation projector
     # - transform 2nd derivatives Cartesian to normal modes
+    # - project out rotation and translations
+    # - compute zpvc to optical rotation
     # - report rotation @ eq-point
     # - report correction alone
     # - report total rotation+correction

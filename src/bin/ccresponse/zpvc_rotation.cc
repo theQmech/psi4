@@ -80,6 +80,9 @@ using namespace psi;
  void rs(int nm, int n, double **array, double *e_vals, int matz,
          double **e_vecs, double toler);
 
+double to_freq_m_inv(double val, double mass);
+double to_delta_x_sq(double nu, double theta);
+
 // uncomment the ones needed as and when required
 
 namespace psi { namespace ccresponse {
@@ -277,12 +280,71 @@ void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
   // Internal coordinate system the d^2[alpha]/dQ^2 from the papers  //
   // then compute the corrections using the expressions  from those sources //
 
+  SharedMatrix deriv_normal(new Matrix("Derivatives in Normal Mode", natom*3,natom*3));
+  deriv_normal->gemm(0,0,1.0,d2_alpha_dx2,Lx,0.0);
+  deriv_normal->gemm(0,0,1.0,Lx->transpose(),deriv_normal,0.0);
 
+  //=================================================
+  printf("=======================================\n");
+  printf("Double derivative in normal coordinates\n");
+  printf("=======================================\n");
+  deriv_normal->print();
+  printf("=======================================\n");
+  //=================================================
+
+  SharedVector freq(new Vector("Freq",(3*natom-6)));
+  for (int i=0; i<3*natom-6; ++i){
+    freq->set(i, to_freq_m_inv(Fevals->get(i), redmass->get(i)));
+  }
+
+  //=================================================
+  printf("=======================================\n");
+  printf("Frequencies in meter inverse\n");
+  printf("=======================================\n");
+  freq->print();
+  printf("=======================================\n");
+  //=================================================
+
+  double theta = 300;//???
+
+  SharedVector delta_x_sq(new Vector(3*natom - 6));
+  for (int i=0; i<3*natom-6; ++i){
+    delta_x_sq->set(i, to_delta_x_sq(freq->get(i), theta));///???
+  }
+
+  //=================================================
+  printf("=======================================\n");
+  printf("delta_x_sq\n");
+  printf("=======================================\n");
+  delta_x_sq->print();
+  printf("=======================================\n");
+  //=================================================
+
+
+  double correction = 0.0;
+  for (int i=0; i<3*natom-6; ++i){
+    correction += deriv_normal->get(i,i)*delta_x_sq->get(i);
+  }
+  correction /= 2.0;
+
+  printf("\n\nFinal Result here:\n%15.12f\n", correction);
 
 }
 
 }} // namespace psi::ccresponse
 
+double to_freq_m_inv(double val, double mass){
+  //return freq in m^(-1)
+  double result = 2.0*pc_pi*sqrt(val/mass)/pc_c; //???
+  return result;
+}
+
+double to_delta_x_sq(double nu, double theta){
+  double x1 = (pc_h*pc_c*nu)/(2.0*pc_kb*theta);
+  double x2 = pc_h/(8*pc_pi*pc_pi*pc_c*nu * tanh(x1)); //???
+
+  return x2;
+}
 
 /* The Levi-Civitas evaluator */
 
