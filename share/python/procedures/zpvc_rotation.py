@@ -149,23 +149,25 @@ def run_zpvc_rotation(name, **kwargs):
         #     for disp_type in tmp 
         #     ]
 
+# Structure of opt_rot_single:
+#     {list of guages}->{list of tensors}->{list of 9 floats}
         alpha_single = [
             [ 
-                sum([tensor[4*index] for index in xrange(3)]) for tensor in guage
+                sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
             ] 
         for guage in opt_rot_single
         ]
 
         alpha_mixed = [
             [ 
-                sum([tensor[4*index] for index in xrange(3)]) for tensor in guage
+                sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
             ] 
         for guage in opt_rot_mixed
         ]
 
         alpha_eq = [
             [ 
-                sum([tensor[4*index] for index in xrange(3)]) for tensor in guage
+                sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
             ] 
         for guage in opt_rot_eq
         ]
@@ -174,7 +176,7 @@ def run_zpvc_rotation(name, **kwargs):
 
         for i in xrange(len(consider_gauge[mygauge])):
             deriv_list = []
-            for j in xrange(len(opt_rot_single)/2):
+            for j in xrange(len(opt_rot_single[i])/2):
             # j enumerates the 3n coordinates
             # '2j' is displacement in +ve direction in coordinate 'j'
             # '2j+1' in the -ve direction
@@ -200,6 +202,7 @@ def run_zpvc_rotation(name, **kwargs):
 
                 deriv_list.append(curr_list)
 
+            # print(deriv_list)
             ## Call function and print result
             psi4.zpvc_rotation(psi4.get_active_molecule(), deriv_list)
             ## Do the necessary parts over here
@@ -222,10 +225,11 @@ def run_zpvc_rotation(name, **kwargs):
 
 # Function that gives index corresponding to (j, k)
 # Here j, k correspond to displacements for example, "1_y_m", "1_x_p" etc. 
-def idx(j, k):
-    if j < k:
-        swap(j,k)
-    return ((2 + (j%2))*(2**(j/2)) -4 + k)
+# idx(a, b) = 2((a/2)-1)(a/2) + (a%2)(a-1) + b 
+def idx(a, b):
+    if a < b:
+        swap(a,b)
+    return (2*((a/2)-1)*(a/2) + (a%2)*(a-1) + b)
 
 #   SAVE this for when multiple wavelengths works
 # # Get list of omega values
@@ -245,27 +249,5 @@ def idx(j, k):
 #     wavelength = wavelength / psi_hartree2ev
 # if units == 'atomic':
 #     pass
-# ################################
-# ###                          ###
-# ###    DATABASE STRUCTURE    ###
-# ###                          ###
-# ################################
 
-# Dict of dicts
-# inputs_generated (boolean)
-# job_status: (ordered Dict)
-#    key-> {atom}_{cord}_{p/m}
-#       val-> (not_started,running,finished)
-#    job_list: (string)
-#        status (string)
-# jobs_complete (boolean)
-# zpvc_computed (boolean)
-# prop (string) = zpvc
-#
-
-# ?
-# data: dipole_polarizability
-#    : optical_rotation
-#    : dipole_quadrupole_polarizability
-# ?
-# results:
+# view ./findif_response_utils/db_helper.py for database structure

@@ -73,19 +73,19 @@ def run_roa(name, **kwargs):
     # Check if final result is in here
     # ->if we have already computed roa, back up the dict
     # ->copy it setting this flag to false and continue
-    if ('roa_computed' in db) and ( db['roa_computed'] ):
-        db2 = shelve.open('.database.bak{}'.format(dbno), writeback=True)
-        dbno += 1
-        for key,value in db.iteritems():
-            db2[key]=value
+    # if ('roa_computed' in db) and ( db['roa_computed'] ):
+    #     db2 = shelve.open('.database.bak{}'.format(dbno), writeback=True)
+    #     dbno += 1
+    #     for key,value in db.iteritems():
+    #         db2[key]=value
 
-        db2.close()
-        db['roa_computed'] = False
-    else:
-        db['roa_computed'] = False
+    #     db2.close()
+    #     db['roa_computed'] = False
+    # else:
+    #     db['roa_computed'] = False
 
     if 'inputs_generated' not in db:
-        findif_response_utils.initialize_database(db,name,"roa", ["roa_tensor"])
+        findif_response_utils.initialize_database(db,name,"roa", ["roa_tensor"], additional_kwargs=None,displacement_type=1)
 
     # Generate input files
     if not db['inputs_generated']:
@@ -96,8 +96,10 @@ def run_roa(name, **kwargs):
     if db['inputs_generated'] and not db['jobs_complete']:
         print('Checking status')
         findif_response_utils.stat(db)
-        for job, status in db['job_status'].items():
-            print("{} --> {}".format(job, status))
+        for job_type in db['jobs']:
+            print ("Checking {} jobs".format(job_type))
+            for job,status in db['jobs'][job_type]['job_status'].items():
+                print("{} --> {}".format(job, status))
 
     # Compute ROA Scattering
     if db['jobs_complete']:
@@ -159,23 +161,6 @@ def run_roa(name, **kwargs):
 #     wavelength = wavelength / psi_hartree2ev
 # if units == 'atomic':
 #     pass
-# ################################
-# ###                          ###
-# ###    DATABASE STRUCTURE    ###
-# ###                          ###
-# ################################
-
-# Dict of dicts
-# inputs_generated (boolean)
-# job_status: (ordered Dict)
-#    key-> {atom}_{cord}_{p/m}
-#       val-> (not_started,running,finished)
-#    job_list: (string)
-#        status (string)
-# jobs_complete (boolean)
-# roa_computed (boolean)
-# prop (string) = roa
-#
 
 # ?
 # data: dipole_polarizability
@@ -183,3 +168,5 @@ def run_roa(name, **kwargs):
 #    : dipole_quadrupole_polarizability
 # ?
 # results:
+
+# view ./findif_response_utils/db_helper.py for database structure

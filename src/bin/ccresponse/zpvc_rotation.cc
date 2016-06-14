@@ -80,7 +80,6 @@ using namespace psi;
  void rs(int nm, int n, double **array, double *e_vals, int matz,
          double **e_vecs, double toler);
 
-double to_freq_m_inv(double val, double mass);
 double to_delta_x_sq(double nu, double theta);
 
 // uncomment the ones needed as and when required
@@ -285,59 +284,65 @@ void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
   deriv_normal->gemm(0,0,1.0,Lx->transpose(),deriv_normal,0.0);
 
   //=================================================
-  printf("=======================================\n");
-  printf("Double derivative in normal coordinates\n");
-  printf("=======================================\n");
-  deriv_normal->print();
-  printf("=======================================\n");
+  outfile->Printf("Double derivative in cartesian coordinates\n");
+  d2_alpha_dx2->print();
   //=================================================
 
-  SharedVector freq(new Vector("Freq",(3*natom-6)));
-  for (int i=0; i<3*natom-6; ++i){
-    freq->set(i, to_freq_m_inv(Fevals->get(i), redmass->get(i)));
+  //=================================================
+  outfile->Printf("Double derivative in normal coordinates\n");
+  deriv_normal->print();
+  //=================================================
+
+  double km_convert = pc_hartree2J/(pc_bohr2m * pc_bohr2m * pc_amu2kg * pc_au2amu);
+  double m_convert = 1.0/(2.0 * pc_pi * pc_c);
+
+  SharedVector freq(new Vector("Freq",(3*natom)));
+  for (int i=0; i<3*natom; ++i){
+    if(Fevals->get(i) < 0.0)
+      freq->set(i, m_convert*sqrt(-km_convert*Fevals->get(i)));
+    else
+      freq->set(i, m_convert*sqrt(km_convert*Fevals->get(i)));
   }
 
-  //=================================================
-  printf("=======================================\n");
-  printf("Frequencies in meter inverse\n");
-  printf("=======================================\n");
-  freq->print();
-  printf("=======================================\n");
-  //=================================================
+  outfile->Printf("\n\t     Harmonic Freq.   Red. Mass \n");
+  outfile->Printf("\t        (m-1)            (amu)    \n");
+  outfile->Printf("\t---------------------------------------------------------------------------------------------------\n");
+  for(int i=0; i < 3*natom; ++i)
+  {
+    if(Fevals->get(i) < 0.0)
+      outfile->Printf("\t  %3d  %10.3fi    %7.4f\n",
+       i, freq->get(i), redmass->get(i));
+    else
+      outfile->Printf("\t  %3d  %10.3f     %7.4f\n",
+       i, freq->get(i), redmass->get(i));
+  }
+  outfile->Printf("\t---------------------------------------------------------------------------------------------------\n");
 
-  double theta = 300;//???
+  double theta = 300.0;//???
 
-  SharedVector delta_x_sq(new Vector(3*natom - 6));
-  for (int i=0; i<3*natom-6; ++i){
+  //firest six frequencies are useless
+  SharedVector delta_x_sq(new Vector(3*natom));
+  for (int i=6; i<3*natom; ++i){
     delta_x_sq->set(i, to_delta_x_sq(freq->get(i), theta));///???
   }
 
   //=================================================
-  printf("=======================================\n");
-  printf("delta_x_sq\n");
-  printf("=======================================\n");
+  outfile->Printf("delta_x_sq\n");
   delta_x_sq->print();
-  printf("=======================================\n");
   //=================================================
 
-
   double correction = 0.0;
-  for (int i=0; i<3*natom-6; ++i){
+  for (int i=6; i<3*natom; ++i){
     correction += deriv_normal->get(i,i)*delta_x_sq->get(i);
   }
   correction /= 2.0;
 
+  outfile->Printf("\n\nFinal Result here:\n%15.12f\n", correction);
   printf("\n\nFinal Result here:\n%15.12f\n", correction);
 
 }
 
 }} // namespace psi::ccresponse
-
-double to_freq_m_inv(double val, double mass){
-  //return freq in m^(-1)
-  double result = 2.0*pc_pi*sqrt(val/mass)/pc_c; //???
-  return result;
-}
 
 double to_delta_x_sq(double nu, double theta){
   double x1 = (pc_h*pc_c*nu)/(2.0*pc_kb*theta);

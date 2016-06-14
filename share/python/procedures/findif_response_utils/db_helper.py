@@ -298,7 +298,28 @@ def stat(db):
     if n_finished == n_total:
         db['jobs_complete'] = True
 
-
+    print ("{:.2f}%% jobs({:d}/{:d}) completed.".format((n_finished+0.0)/n_total, n_finished, n_finished+n_total))
 
 
     # END stat()
+
+# ################################
+# ###                          ###
+# ###    DATABASE STRUCTURE    ###
+# ###                          ###
+# ################################
+# Dict of dicts
+# 'inputs_generated' ==> (boolean)
+# 'jobs_complete'    ==> (boolean)
+# 'prop_cmd'         ==> (string, "property(name, [properties], addn_props)"
+#
+# 'jobs'             ==> (OrderedDict)
+#       'single_displacements' :: OrderedDict
+#           'job_status' :: OrderedDict (keys 1_x_p,... value 'not_started',...)
+#       'mixed_displacements' :: OrderedDict (if type=2)
+#           'job_status' :: OrderedDict (keys 1_x_p,... value 'not_started',...)
+#       'eq_point'            :: OrderedDict (if type=2)
+#           'job_status' :: OrderedDict (keys 1_x_p,... value 'not_started',...)
+# '<prop>_computed'  ==> (boolean)
+#
+##################################
