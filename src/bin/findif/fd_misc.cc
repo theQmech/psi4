@@ -35,6 +35,21 @@
 #include <physconst.h>
 
 namespace psi { namespace findif {
+namespace {
+  int levi(int a, int b, int c){
+    int val =0;
+    int x =0, y=1,z=2;
+    if(a==x && b==y && c==z) val=1;
+    else if(a==y && b==z && c==x) val=1;
+    else if(a==z && b==x && c==y) val=1;
+    else if(a==x && b==z && c==y) val=-1;
+    else if(a==y && b==x && c==z) val=-1;
+    else if(a==z && b==y && c==x) val=-1;
+    else val=0;
+
+    return val;
+    }
+  }//anonymous namespace
 
 bool ascending(const VIBRATION *vib1, const VIBRATION *vib2) {
   if (vib1->km < vib2->km)
@@ -211,7 +226,7 @@ void displace_atom(SharedMatrix geom, const int atom, const int coord, const int
   return;
 }
 
-std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options)
+std::vector<SharedMatrix> atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options)
 {
 
   // This is the size in bohr because geometry is in bohr at this point
@@ -249,8 +264,8 @@ std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol
 
 /*
  * mixed_atomic_displacements:
- *  Generates displaced geometries by displacing two of the 3n Cartesian coordinates at a
- *  time.
+ *  Generates displaced geometries by displacing two of the 3n Cartesian coordinates
+ *  at a  time.
  *  For every atom N1 the coordinate x1 is displaced +/- directions.
  *  For each of those displaced geometries all atoms N2 <= N1 and all
  *  coordinates {x2: x,y,z if N2<N1; x2 <x1 if N2=N1} are displaced in +/-
@@ -261,7 +276,9 @@ std::vector< SharedMatrix > atomic_displacements(boost::shared_ptr<Molecule> mol
  *  displacements.
  */
 
-std::vector<SharedMatrix> mixed_atomic_displacements(boost::shared_ptr<Molecule> mol, Options &options)
+std::vector<SharedMatrix> mixed_atomic_displacements(
+  boost::shared_ptr<Molecule> mol,
+  Options &options)
 {
   double disp_size = options.get_double("DISP_SIZE");
   int natom = mol->natom();
@@ -310,4 +327,309 @@ std::vector<SharedMatrix> mixed_atomic_displacements(boost::shared_ptr<Molecule>
 
 }
 
-}}
+/*
+ *normal_mode_displacements
+ *  Return a list of geometries displaced along normal modes by
+ *  options.get_double("DISP_SIZE") in +/- directions.
+ */
+
+std::vector<SharedMatrix> normal_mode_displacement_vectors(
+  boost::shared_ptr<Molecule> mol,
+  Options &options,
+  SharedMatrix F //Hessian matrix, read + set by python wrapper
+  )
+{
+  int natom = mol->natom();
+  SharedMatrix geom(new Matrix(natom,3));
+  SharedMatrix geom_orig(new Matrix(natom,3));
+  SharedMatrix M(new Matrix(natom*3,natom*3));
+  M->zero();
+  mol->move_to_com();
+  geom_orig->copy(mol->geometry());
+  geom_orig->print();
+  geom->zero();
+  //Mass-Weighting
+  double total_mass=0.00;
+  for(int i = 0; i < natom; i++){
+    total_mass += mol->mass(i);
+    for(int j = 0; j<3; j++){
+      geom->set(i,j, geom_orig->get(i,j)*sqrt(mol->mass(i)));
+      M->set((i*3+j),(i*3+j),1/sqrt(mol->mass(i)));
+    }
+  }
+  outfile->Printf("TOTAL MASS == %lf (amu)\n", total_mass);
+  // Diagonalize MOI tensor
+  SharedMatrix I(new Matrix("Inertia Tensor",3,3));
+  SharedMatrix Ievect(new Matrix("Inertia Tensor Eigenvectors",3,3));
+  SharedVector Ieval(new Vector("Inertia Tensor Eigenvalues",3));
+  I->copy(mol->inertia_tensor());
+  I->diagonalize(Ievect,Ieval);
+
+  // Build I inverse
+  SharedMatrix Iinv(new Matrix("I^{-1}",3,3));
+  SharedMatrix Itmp(new Matrix(3,3));
+  Iinv->zero();
+  for(int i =0; i < 3; i++){
+    Iinv->set(i,i,(1.0/Ieval->get(i)));
+  }
+  Itmp->gemm(0,1,1.0,Iinv,Ievect,0.0);
+  Iinv->gemm(0,0,1.0,Ievect,Itmp,0.0);
+
+  // rotation-translation projector
+  SharedMatrix P(new Matrix(natom*3,natom*3));
+  //Generate rotation-translation vectors
+  for(int i = 0; i < natom*3; i++){
+    int icart = i%3;
+    int iatom = i/3;
+    int imass = mol->mass(iatom);
+
+    P->set(i,i,1.0);
+
+    for(int j = 0; j < natom*3; j++){
+      int jcart = j%3;
+      int jatom = j/3;
+      int jmass = mol->mass(jatom);
+
+      P->add(i,j,-1.0*sqrt(imass*jmass)/total_mass*(icart==jcart));
+
+      for(int a = 0; a < 3; a++){
+        for(int b = 0; b < 3; b++){
+          for(int c = 0; c < 3; c++){
+            for(int d = 0; d < 3; d++){
+              P->add(i,j,
+                -1.0*levi(a,b,icart)*geom->get(iatom,b)*Iinv->get(a,c)* levi(c,d,jcart)*geom->get(jatom,d));
+            }
+          }
+        }
+      }
+    }
+  }
+  F->print("check-Hessian.test");
+  P->print("check-Proj.test");
+  SharedMatrix T(new Matrix(3*natom,3*natom));
+  // Mass Weight F --> FM
+  T->zero();
+  T->gemm(0,0,1.0,M,F,0.0);
+  F->gemm(0,0,1.0,T,M,0.0);
+
+  //Project out rotations and translations
+  T->zero();
+  T->gemm(0,0,1.0,F,P,0.0);
+  F->gemm(0,0,1.0,P,T,0.0);
+
+  // Projected Hessian Evects (normal modes)
+  SharedMatrix Fevec(new Matrix(natom*3,natom*3));
+  // vibrational freq
+  SharedVector freq(new Vector(natom*3));
+
+  /* Convert evals from H/(kg bohr^2) to J/(kg m^2) = 1/s^2 */
+  const double km_convert = pc_hartree2J/(pc_bohr2m * pc_bohr2m * pc_amu2kg);
+  /* v = 1/(2 pi c) sqrt( eval ) */
+  const double cm_convert = 1.0/(2.0 * pc_pi * pc_c * 100.0);
+  //diagonalize MW hessian
+  F->diagonalize(Fevec,freq);
+  // compute normal mode displacement vectors
+  SharedMatrix Lx(new Matrix(natom*3,natom*3));
+  T->zero();
+  T->gemm(0,0,1.0,P,Fevec,0.0);
+  Lx->gemm(0,0,1.0,M,T,0.0);
+  SharedVector redmass( new Vector(natom*3) );
+  double norm = 0.0;
+  redmass->zero();
+  for(int i = 0; i < 3*natom; i++){
+    norm = 0.0;
+    for(int j = 0; j < 3*natom; j++){
+      norm += Lx->get(j,i)*Lx->get(j,i);
+    }
+
+    if(norm > 1e-3){
+      redmass->set(i,1.0/norm);
+      outfile->Printf("Reduced mass of mode %9.4f = %20.12f\n",cm_convert*(sqrt(km_convert*freq->get(i))),redmass->get(i));
+    }
+    norm=sqrt(norm);
+    if(norm > 1e-3){
+      for(int j = 0; j< 3*natom; j++){
+        double normVal = Lx->get(j,i) * 1/norm;
+        Lx->set(j,i,normVal);
+      }
+    }
+  }
+  //create displacement "vectors"
+  std::vector<SharedMatrix> disp_vects;
+  for(int i = 6; i < (3*natom); i++ ){
+    SharedMatrix d_vec(new Matrix(natom,3));
+    for(int j = 0; j<natom*3; j++){
+      int jcart = j%3;
+      int jatom = j/3;
+      d_vec->set(jatom,jcart,Lx->get(j,i) );
+    }
+    disp_vects.push_back(d_vec);
+  }
+
+  return disp_vects;
+}
+
+
+/*
+ *normal_mode_rms_amp_displacements
+ *  Returns a vector of std::pair (displacement, size). Each normal mode
+ *  has its own displacement amplitude which depends on temperature and the
+ *  vibrational frequency.
+ */
+std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
+  boost::shared_ptr<Molecule> mol,
+  Options &options,
+  SharedMatrix F)
+{
+  int natom = mol->natom();
+  SharedMatrix geom(new Matrix(natom,3));
+  SharedMatrix geom_orig(new Matrix(natom,3));
+  SharedMatrix M(new Matrix(natom*3,natom*3));
+  M->zero();
+  geom_orig->copy(mol->geometry());
+  outfile->Printf("\nORIGNAL GEOMETRY\n");
+  geom_orig->print();
+  outfile->Printf("\nAfter COM GEOMETRY\n");
+  mol->move_to_com();
+  geom_orig->copy(mol->geometry());
+  geom_orig->print();
+  geom->zero();
+  //Mass-Weighting
+  double total_mass=0.00;
+  for(int i = 0; i < natom; i++){
+    total_mass += mol->mass(i);
+    for(int j = 0; j<3; j++){
+      geom->set(i,j, geom_orig->get(i,j)*sqrt(mol->mass(i)));
+      M->set((i*3+j),(i*3+j),1/sqrt((mol->mass(i))/pc_au2amu));
+    }
+  }
+  outfile->Printf("!!!! In Normal_mod_rms_amp_displacements\n");
+  outfile->Printf("--->Total Mass = %lf",total_mass);
+
+  // Diagonalize MOI tensor
+  SharedMatrix I(new Matrix("Inertia Tensor",3,3));
+  SharedMatrix Ievect(new Matrix("Inertia Tensor Eigenvectors",3,3));
+  SharedVector Ieval(new Vector("Inertia Tensor Eigenvalues",3));
+  I->copy(mol->inertia_tensor());
+  I->diagonalize(Ievect,Ieval);
+
+  // Build I inverse
+  SharedMatrix Iinv(new Matrix("I^{-1}",3,3));
+  SharedMatrix Itmp(new Matrix(3,3));
+  Iinv->zero();
+  for(int i =0; i < 3; i++){
+    Iinv->set(i,i,(1.0/Ieval->get(i)));
+  }
+  Itmp->gemm(0,1,1.0,Iinv,Ievect,0.0);
+  Iinv->gemm(0,0,1.0,Ievect,Itmp,0.0);
+
+  // rotation-translation projector
+  SharedMatrix P(new Matrix(natom*3,natom*3));
+  //Generate rotation-translation vectors
+  for(int i = 0; i < natom*3; i++){
+    int icart = i%3;
+    int iatom = i/3;
+    int imass = mol->mass(iatom);
+
+    P->set(i,i,1.0);
+
+    for(int j = 0; j < natom*3; j++){
+      int jcart = j%3;
+      int jatom = j/3;
+      int jmass = mol->mass(jatom);
+
+      P->add(i,j,-1.0*sqrt(imass*jmass)/total_mass*(icart==jcart));
+
+      for(int a = 0; a < 3; a++){
+        for(int b = 0; b < 3; b++){
+          for(int c = 0; c < 3; c++){
+            for(int d = 0; d < 3; d++){
+              P->add(i,j,
+                -1.0*levi(a,b,icart)*
+                geom->get(iatom,b)*Iinv->get(a,c)*
+                levi(c,d,jcart)*geom->get(jatom,d)
+                );
+            }
+          }
+        }
+      }
+    }
+  }
+  F->print("check-Hessian.test");
+  P->print("check-Proj.test");
+  SharedMatrix T(new Matrix(3*natom,3*natom));
+  // Mass Weight F --> FM
+  T->zero();
+  T->gemm(0,0,1.0,M,F,0.0);
+  F->gemm(0,0,1.0,T,M,0.0);
+
+  //Project out rotations and translations
+  T->zero();
+  T->gemm(0,0,1.0,F,P,0.0);
+  F->gemm(0,0,1.0,P,T,0.0);
+
+  // Diagonalize Fm --> Q(modes),v(freq)
+  // Projected Hessian Evects (normal modes)
+  SharedMatrix Fevec(new Matrix(natom*3,natom*3));
+  // vibrational freq
+  SharedVector freq(new Vector(natom*3));
+
+  /* Convert evals from H/(kg bohr^2) to J/(kg m^2) = 1/s^2 */
+  const double km_convert = pc_hartree2J/(
+      pc_bohr2m * pc_bohr2m * pc_amu2kg);
+  /* v = 1/(2 pi c) sqrt( eval ) */
+  const double cm_convert = 1.0/(2.0 * pc_pi * pc_c * 100.0);
+  //diagonalize MW hessian
+  F->diagonalize(Fevec,freq);
+  // compute normal mode displacement vectors
+  SharedMatrix Lx(new Matrix(natom*3,natom*3));
+  T->zero();
+  T->gemm(0,0,1.0,P,Fevec,0.0);
+  Lx->gemm(0,0,1.0,M,T,0.0);
+  SharedVector redmass( new Vector(natom*3) );
+  double norm = 0.0;
+  redmass->zero();
+  for(int i = 0; i < 3*natom; i++){
+    norm = 0.0;
+    for(int j = 0; j < 3*natom; j++){
+      norm += Lx->get(j,i)*Lx->get(j,i);
+    }
+
+    if(norm > 1e-3){
+      redmass->set(i,1.0/norm);
+    }
+    norm=sqrt(norm);
+    if(norm > 1e-3){
+      for(int j = 0; j< 3*natom; j++){
+        double normVal = Lx->get(j,i) * 1/norm;
+        Lx->set(j,i,normVal);
+      }
+    }
+  }
+  Lx->print("Lx.test");
+  //create displacement "vectors" and compute displacement amplitude for each
+  //wiberg's constants
+  double c1 = 16.8576;
+  double c2 = 0.719384;
+  //double temp = options.get_double("T");
+  double temp = 300.00;
+  std::vector<std::pair<SharedMatrix,double>> disp_amp_pairs;
+  for(int i = 6; i < (3*natom); i++ ){
+    if(freq->get(i) > 1e-5){
+      double omega = cm_convert*(sqrt(km_convert*freq->get(i)));
+      double amp = c2*omega/temp;
+      amp = cosh(amp)/sinh(amp);
+      amp = sqrt((c1/omega)*amp);
+      SharedMatrix d_vec(new Matrix(natom,3));
+      for(int j = 0; j<natom*3; j++){
+        int jcart = j%3;
+        int jatom = j/3;
+        d_vec->set(jatom,jcart,Lx->get(j,i));
+      }
+      disp_amp_pairs.push_back(std::make_pair(d_vec,amp));
+    }
+  }
+
+  return disp_amp_pairs;
+}
+}}//namespace psi::findif

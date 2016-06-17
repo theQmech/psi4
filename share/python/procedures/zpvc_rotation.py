@@ -42,6 +42,7 @@ sys.path.append(path_dir)
 from . import findif_response_utils
 
 
+# maybe rename this rotation_findif_correction ??
 def run_zpvc_rotation(name, **kwargs):
     """
         Main driver for managing Zero Point Correction to Optical activity
@@ -54,7 +55,35 @@ def run_zpvc_rotation(name, **kwargs):
             3. When all displacements are run, collects the necessary information
                 from each displaced computation, and computes final result.
     """
+# Relevant kwargs will be
+    # correction_type: vibave, zpvc
+    # displacement_coords: cartesian, normal, normal_rms_amp
 
+    # for testing new displacement functions
+    if True:
+        mol = psi4.get_active_molecule();
+        # returns list of displacement vectors along normal modes
+        # actually psi4 matrix types, vector of length 3n converted to
+        # matrix of (natom x 3) elements --> add to/ subtract from geom to
+        # create a displaced geometry
+        hessmat = findif_response_utils.file15_matrix()
+        displacements = psi4.normal_mode_displacement_vectors(mol,hessmat)
+        psi4.print_out("=========================================\n")
+        psi4.print_out("    Normal mode displacement vectors\n")
+        psi4.print_out("=========================================\n")
+        for i,disp in enumerate(displacements):
+            psi4.print_out("Displacement {}".format(i))
+            disp.print_out()
+        # returns a list of pairs (displacement_vector, amplitude)
+        disp_w_size = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
+        psi4.print_out("======================================================\n")
+        psi4.print_out("    Normal mode displacement vectors w/ amplitudes\n")
+        psi4.print_out("======================================================\n")
+        for i,(disp,siz) in enumerate(disp_w_size):
+            psi4.print_out("displacement {} has amplitude {}".format(i,siz))
+            disp.print_out()
+        psi4.print_out("I have finished that loop, apparently\n")
+        return
     # Get list of omega values -> Make sure we only have one wavelength
     # Catch this now before any real work gets done
     omega = psi4.get_option('CCRESPONSE', 'OMEGA')
@@ -140,35 +169,35 @@ def run_zpvc_rotation(name, **kwargs):
                 )
 
         # tmp = [opt_rot_single, opt_rot_mixed, opt_rot_eq]
-        # [alpha_single, alpha_mixed, alpha_eq] = 
-        #     [ 
-        #         [ 
-        #             ([(sum([tensor[4*index] for index in xrange(3)]))/3.0 for tensor in guage]) 
+        # [alpha_single, alpha_mixed, alpha_eq] =
+        #     [
+        #         [
+        #             ([(sum([tensor[4*index] for index in xrange(3)]))/3.0 for tensor in guage])
         #         for guage in disp_type
-        #         ] 
-        #     for disp_type in tmp 
+        #         ]
+        #     for disp_type in tmp
         #     ]
 
 # Structure of opt_rot_single:
 #     {list of guages}->{list of tensors}->{list of 9 floats}
         alpha_single = [
-            [ 
+            [
                 sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
-            ] 
+            ]
         for guage in opt_rot_single
         ]
 
         alpha_mixed = [
-            [ 
+            [
                 sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
-            ] 
+            ]
         for guage in opt_rot_mixed
         ]
 
         alpha_eq = [
-            [ 
+            [
                 sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
-            ] 
+            ]
         for guage in opt_rot_eq
         ]
 
@@ -183,19 +212,19 @@ def run_zpvc_rotation(name, **kwargs):
                 curr_list = []
                 for k in xrange(j+1):
                     val = 0.0
-                    
+
                     if (k == j):
-                        numr = alpha_single[i][2*j] 
-                        numr += alpha_single[i][2*j + 1] 
+                        numr = alpha_single[i][2*j]
+                        numr += alpha_single[i][2*j + 1]
                         numr -= 2*alpha_eq[i][0]
-                        
+
                         val = numr/(step*step)
                     else:
-                        numr = alpha_mixed[i][idx(2*j, 2*k)] 
+                        numr = alpha_mixed[i][idx(2*j, 2*k)]
                         numr += alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
-                        numr -= alpha_mixed[i][idx(2*j, 2*k + 1)] 
+                        numr -= alpha_mixed[i][idx(2*j, 2*k + 1)]
                         numr -= alpha_mixed[i][idx(2*j + 1, 2*k)]
-                        
+
                         val = numr/(4*step*step)
 
                     curr_list.append(val)
@@ -224,8 +253,8 @@ def run_zpvc_rotation(name, **kwargs):
     db.close()
 
 # Function that gives index corresponding to (j, k)
-# Here j, k correspond to displacements for example, "1_y_m", "1_x_p" etc. 
-# idx(a, b) = 2((a/2)-1)(a/2) + (a%2)(a-1) + b 
+# Here j, k correspond to displacements for example, "1_y_m", "1_x_p" etc.
+# idx(a, b) = 2((a/2)-1)(a/2) + (a%2)(a-1) + b
 def idx(a, b):
     if a < b:
         swap(a,b)
