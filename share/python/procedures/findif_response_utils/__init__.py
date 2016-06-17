@@ -36,3 +36,4 @@ db_helper.py
 """
 from .db_helper import *
 from .data_collection_helper import *
+from .matrix_from_file_helper import *
