@@ -140,16 +140,16 @@ def parse_hessian_matrix():
                 data_ln = [float(x) for x in string_ln]
                 hessain_read_data.append(data_ln)
 
-    except IOError:
+    except OSError:
         # python 2 raises this type
         raise p4util.ParsingError(
-                "The hessian data {} could not be found be"
-                " sure the hessian has been generated!\n".format('file15.dat'))
-    except FileNotFoundError:
-        # python 3 raises this type
-        raise p4util.ParsingError(
-                "The hessian data {} could not be found be"
-                " sure the hessian has been generated!\n".format('file15.dat'))
+                "The hessian data could not be found in {}"
+                "be sure the hessian has been generated!\n".format('file15.dat'))
+    # except FileNotFoundError:
+    #     # python 3 raises this type
+    #     raise p4util.ParsingError(
+    #             "The hessian data could not be found in {}"
+    #             "be sure the hessian has been generated!\n".format('file15.dat'))
 
     except:
         raise p4util.ParsingError(
@@ -160,9 +160,9 @@ def parse_hessian_matrix():
     for i in range(0,3*natom):
         for j in range(0,natom):
             data = hessian_read_data.pop(0)
-            hessian[i][3*j+1] = data[0]
+            hessian[i][3*j] = data[0]
             hessian[i][3*j+1] = data[1]
-            hessian[i][3*j+1] = data[2]
+            hessian[i][3*j+2] = data[2]
 
     return hessian
 

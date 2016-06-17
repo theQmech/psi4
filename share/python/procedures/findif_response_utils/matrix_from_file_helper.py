@@ -56,15 +56,19 @@ def file15_matrix(hessfile='file15.dat'):
                     line +=1
                     [F[i,3*j],F[i,(3*j)+1],F[i,(3*j)+2]] = [float(x) for x in
                         data_line.split()]
-        return p4util.array_to_matrix(F)
-    except IOError:
+    except OSError:
         # python 2 error
         raise p4util.ParsingError(
                 "The hessian data could not be found in {}"
                 "be sure the hessian has been generated!\n".format('file15.dat'))
 
-    except FileNotFoundError:
-        # python 3 error
+    # except FileNotFoundError:
+    #     # python 3 error
+    #     raise p4util.ParsingError(
+    #             "The hessian data could not be found in {}"
+    #             "be sure the hessian has been generated!\n".format('file15.dat'))
+    except:
         raise p4util.ParsingError(
-                "The hessian data could not be found in {}"
-                "be sure the hessian has been generated!\n".format('file15.dat'))
+                "A problem occured while reading the hessian data!\n")
+
+    return psi4.Matrix.from_array(F)
