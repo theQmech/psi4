@@ -41,7 +41,7 @@ import p4util
 import numpy as np
 
 
-def collect_displaced_matrix_data(displacements, signature, row_dim):
+def collect_displaced_matrix_data(database, disp_type, signature, row_dim):
     """
         Gathers a list of tensors, one at each displaced geometry.
 
@@ -57,8 +57,8 @@ def collect_displaced_matrix_data(displacements, signature, row_dim):
     Throws: none
     """
     result = []
-    for job in displacements:
-        with open('{}/output.dat'.format(job)) as outfile:
+    for job in database['jobs'][disp_type]['job_status'].keys():
+        with open('{0}/{1}/output.dat'.format(database['dir_name'],job)) as outfile:
             result.append(parse_geometry_matrix_data(outfile, signature, row_dim))
 
     return result
@@ -134,7 +134,7 @@ def parse_hessian_matrix():
     hessian_read_data = []
     mol = psi4.get_active_molecule()
     try:
-        with open('file15.dat') as hessF:
+        with open('file15.dat') as hessf:
             for line in hessf:
                 string_ln = line.strip().split()
                 data_ln = [float(x) for x in string_ln]

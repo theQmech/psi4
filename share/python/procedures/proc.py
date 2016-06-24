@@ -2027,6 +2027,10 @@ def run_cc_property(name, **kwargs):
         ['CCEOM', 'R_CONVERGENCE'],
         ['CCEOM', 'E_CONVERGENCE'])
 
+###############################
+    print("%%%%%%%%", kwargs, "%%%%%%%%%%%%")
+###############################
+
     oneel_properties = ['dipole', 'quadrupole']
     twoel_properties = []
     response_properties = ['polarizability', 'rotation', 'roa',
@@ -2078,7 +2082,7 @@ def run_cc_property(name, **kwargs):
 
     if 'zpvc_rotation' in response:
         # perform distributed zpvc to optical rotation
-        run_zpvc_rotation(name, **kwargs)
+        rotation_findif_correction(name, **kwargs)
         return # Don't do anything further
 
     if (n_one > 0 or n_two > 0) and (n_response > 0):

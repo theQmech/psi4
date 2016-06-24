@@ -614,9 +614,11 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
   //double temp = options.get_double("T");
   double temp = 300.00;
   std::vector<std::pair<SharedMatrix,double>> disp_amp_pairs;
+  outfile->Printf("qwertyuiop\n");
   for(int i = 6; i < (3*natom); i++ ){
-    if(freq->get(i) > 1e-5){
+    // if(freq->get(i) > 1e-5){
       double omega = cm_convert*(sqrt(km_convert*freq->get(i)));
+      outfile->Printf("%f\n", omega);
       double amp = c2*omega/temp;
       amp = cosh(amp)/sinh(amp);
       amp = sqrt((c1/omega)*amp);
@@ -627,8 +629,9 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
         d_vec->set(jatom,jcart,Lx->get(j,i));
       }
       disp_amp_pairs.push_back(std::make_pair(d_vec,amp));
-    }
+    // }
   }
+  outfile->Printf("qwertyuiop\n");
 
   return disp_amp_pairs;
 }

@@ -43,7 +43,7 @@ from . import findif_response_utils
 
 
 # maybe rename this rotation_findif_correction ??
-def run_zpvc_rotation(name, **kwargs):
+def rotation_findif_correction(name, **kwargs):
     """
         Main driver for managing Zero Point Correction to Optical activity
         computations with CC response theory.
@@ -59,76 +59,96 @@ def run_zpvc_rotation(name, **kwargs):
     # correction_type: vibave, zpvc
     # displacement_coords: cartesian, normal, normal_rms_amp
 
-    # for testing new displacement functions
-    if True:
-        mol = psi4.get_active_molecule();
-        # returns list of displacement vectors along normal modes
-        # actually psi4 matrix types, vector of length 3n converted to
-        # matrix of (natom x 3) elements --> add to/ subtract from geom to
-        # create a displaced geometry
-        hessmat = findif_response_utils.file15_matrix()
-        displacements = psi4.normal_mode_displacement_vectors(mol,hessmat)
-        psi4.print_out("=========================================\n")
-        psi4.print_out("    Normal mode displacement vectors\n")
-        psi4.print_out("=========================================\n")
-        for i,disp in enumerate(displacements):
-            psi4.print_out("Displacement {}".format(i))
-            disp.print_out()
-        # returns a list of pairs (displacement_vector, amplitude)
-        disp_w_size = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
-        psi4.print_out("======================================================\n")
-        psi4.print_out("    Normal mode displacement vectors w/ amplitudes\n")
-        psi4.print_out("======================================================\n")
-        for i,(disp,siz) in enumerate(disp_w_size):
-            psi4.print_out("displacement {} has amplitude {}".format(i,siz))
-            disp.print_out()
-        psi4.print_out("I have finished that loop, apparently\n")
-        return
+    # for now lets assume correction_type is vibave, deal with zpvc later
+
     # Get list of omega values -> Make sure we only have one wavelength
     # Catch this now before any real work gets done
     omega = psi4.get_option('CCRESPONSE', 'OMEGA')
     if len(omega) > 2:
-        raise p4util.ValidationError('ZPVC_rotation can only be performed for one wavelength.')
+        raise p4util.ValidationError('rotation_findif_correction can only be performed for one wavelength.')
     else:
         pass
 
+    mol = psi4.get_active_molecule()
+
+    ## by default use cartesian coords
+    if not('disp_mode' in kwargs): 
+        kwargs.update({'disp_mode' : 'cartesian'})
+
+    ############################
+    ## if one passes disp_mode = 'normal', then the regex(^(no|false|off|0))
+    ## in kwargs_lower(in procutil.py) matches the string 'normal' and is 
+    ## in turn converted to False.
+    ## Work around for now, let us fix that later
+    kwargs.update({'disp_mode' : 'normal'})
+    ############################
+
     psi4.print_out(
-        'Running ZPVC_rotation computation. Subdirectories for each '
+        'Running rotation_findif_correction computation. Subdirectories for each '
         'required displaced geometry have been created.\n\n')
 
-    dbno = 0
     # Initialize database
     db = shelve.open('database', writeback=True)
+    dbno = 0
+
     # Check if final result is in here
     # ->if we have already computed property, back up the dict
     # ->copy it setting this flag to false and continue
-    # if ('zpvc_computed' in db) and ( db['zpvc_computed'] ):
-    #     db2 = shelve.open('.database.bak{}'.format(dbno), writeback=True)
-    #     dbno += 1
-    #     for key,value in db.iteritems():
-    #         db2[key]=value
+    # dirs are created in order dir0, dir1...
+    # respective daatabases are _bak0, _bak1....
+    # current working database is plane database which corresponds to most fresh dir
+    if ('zpvc_computed' in db) and ( db['zpvc_computed'] ):
+        
+        # increment dbno until backup database exists
+        while True:
+            db_bak = shelve.open('.database.bak{}'.format(dbno), writeback=True)
+            if not ('zpvc_computed' in db_bak):
+                break
+            else:
+                db_bak.close()
+                dbno += 1
 
-    #     db2.close()
-    #     db['zpvc_computed'] = False
-    # else:
-    #     db['zpvc_computed'] = False
+        for key,value in db.iteritems():
+            db_bak[key]=value
 
+        db_bak.close()
+        db['zpvc_computed'] = False
+    
+        dbno += 1
+    else:
+        db['zpvc_computed'] = False
+    # Assertion: dbno = number of dirs created before this
+
+    database_kwargs = {}
+    if kwargs['disp_mode'] == 'normal':
+        database_kwargs = {'disp_mode' : 'normal', 
+                          'disp_type' : ['single', 'eq']
+                        }
+    elif kwargs['disp_mode'] == 'cartesian':
+        database_kwargs = {'disp_mode' : 'cartesian', 
+                          'disp_type' : ['single', 'mixed','eq']
+                        }
+
+    # dbno = number of dirs already made
     if 'inputs_generated' not in db:
         findif_response_utils.initialize_database(db,name,"zpvc_rotation",
-                ["rotation"],additional_kwargs=None,displacement_type =2 )
+                ["rotation"],"dir{}".format(dbno), database_kwargs)
 
     # Generate input files
     if not db['inputs_generated']:
-        findif_response_utils.generate_inputs(db,name)
+        findif_response_utils.generate_inputs(db, database_kwargs)
 
     # Check job status
     if db['inputs_generated'] and not db['jobs_complete']:
         print('Checking status')
-        findif_response_utils.stat(db)
+        (n_finished, n_total) = findif_response_utils.stat(db)
         for job_type in db['jobs']:
             print ("Checking {} jobs".format(job_type))
             for job,status in db['jobs'][job_type]['job_status'].items():
                 print("{} --> {}".format(job, status))
+        print ("{:.2f}% jobs({:d}/{:d}) completed.".format(
+            (n_finished*100.0)/n_total, n_finished, n_total)
+        )
 
     # Compute ZPVC_rotation
     if db['jobs_complete']:
@@ -142,44 +162,33 @@ def run_zpvc_rotation(name, **kwargs):
         gauge_list = ["{} Results".format(x) for x in consider_gauge[mygauge]]
 
         opt_rot_single = []
-        opt_rot_mixed = []
         opt_rot_eq = []
+        if kwargs['disp_mode'] == 'cartesian':
+            opt_rot_mixed = []
+
         for gauge in consider_gauge[mygauge]:
             # Gather data from single_displacements
             opt_rot_single.append(
                 findif_response_utils.collect_displaced_matrix_data(
-                    db['jobs']['single_displacements']['job_status'].keys(),
-                    "Optical Rotation Tensor ({})".format(gauge),
+                    db, 'single_displacements',"Optical Rotation Tensor ({})".format(gauge),
                     3)
                 )
-            # Gather data from mixed displacements
-            opt_rot_mixed.append(
-                findif_response_utils.collect_displaced_matrix_data(
-                    db['jobs']['mixed_displacements']['job_status'].keys(),
-                    ""
-                    "Optical Rotation Tensor ({})".format(gauge),
-                    3)
-                )
+            # Gather data from mixed displacements, needed only in case cartesian displacements
+            if kwargs['disp_mode'] == 'cartesian':
+                opt_rot_mixed.append(
+                    findif_response_utils.collect_displaced_matrix_data(
+                        db, 'mixed_displacements',"Optical Rotation Tensor ({})".format(gauge),
+                        3)
+                    )
             # Gather data from equilibrium point
             opt_rot_eq.append(
                 findif_response_utils.collect_displaced_matrix_data(
-                    db['jobs']['eq_point']['job_status'].keys(),
-                    "Optical Rotation Tensor ({})".format(gauge),
+                    db, 'eq_point',"Optical Rotation Tensor ({})".format(gauge),
                     3)
                 )
 
-        # tmp = [opt_rot_single, opt_rot_mixed, opt_rot_eq]
-        # [alpha_single, alpha_mixed, alpha_eq] =
-        #     [
-        #         [
-        #             ([(sum([tensor[4*index] for index in xrange(3)]))/3.0 for tensor in guage])
-        #         for guage in disp_type
-        #         ]
-        #     for disp_type in tmp
-        #     ]
-
-# Structure of opt_rot_single:
-#     {list of guages}->{list of tensors}->{list of 9 floats}
+        # Structure of opt_rot_single:
+        #     {list of guages}->{list of tensors}->{list of 9 floats}
         alpha_single = [
             [
                 sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
@@ -187,12 +196,13 @@ def run_zpvc_rotation(name, **kwargs):
         for guage in opt_rot_single
         ]
 
-        alpha_mixed = [
-            [
-                sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
+        if kwargs['disp_mode'] == 'cartesian':
+            alpha_mixed = [
+                [
+                    sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
+                ]
+            for guage in opt_rot_mixed
             ]
-        for guage in opt_rot_mixed
-        ]
 
         alpha_eq = [
             [
@@ -205,36 +215,77 @@ def run_zpvc_rotation(name, **kwargs):
 
         for i in xrange(len(consider_gauge[mygauge])):
             deriv_list = []
-            for j in xrange(len(opt_rot_single[i])/2):
-            # j enumerates the 3n coordinates
-            # '2j' is displacement in +ve direction in coordinate 'j'
-            # '2j+1' in the -ve direction
-                curr_list = []
-                for k in xrange(j+1):
-                    val = 0.0
 
-                    if (k == j):
-                        numr = alpha_single[i][2*j]
-                        numr += alpha_single[i][2*j + 1]
-                        numr -= 2*alpha_eq[i][0]
+            if kwargs['disp_mode'] == 'cartesian':
+                for j in xrange(len(opt_rot_single[i])/2):
+                # j enumerates the 3n coordinates
+                # '2j' is displacement in +ve direction in coordinate 'j'
+                # '2j+1' in the -ve direction
+                    curr_list = []
+                    for k in xrange(j+1):
+                        val = 0.0
 
-                        val = numr/(step*step)
-                    else:
-                        numr = alpha_mixed[i][idx(2*j, 2*k)]
-                        numr += alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
-                        numr -= alpha_mixed[i][idx(2*j, 2*k + 1)]
-                        numr -= alpha_mixed[i][idx(2*j + 1, 2*k)]
+                        if (k == j):
+                            numr = alpha_single[i][2*j]
+                            numr += alpha_single[i][2*j + 1]
+                            numr -= 2*alpha_eq[i][0]
 
-                        val = numr/(4*step*step)
+                            val = numr/(step*step)
+                        else:
+                            numr = alpha_mixed[i][idx(2*j, 2*k)]
+                            numr += alpha_mixed[i][idx(2*j + 1, 2*k + 1)]
+                            numr -= alpha_mixed[i][idx(2*j, 2*k + 1)]
+                            numr -= alpha_mixed[i][idx(2*j + 1, 2*k)]
 
-                    curr_list.append(val)
+                            val = numr/(4*step*step)
 
-                deriv_list.append(curr_list)
+                        curr_list.append(val)
 
-            # print(deriv_list)
-            ## Call function and print result
-            psi4.zpvc_rotation(psi4.get_active_molecule(), deriv_list)
-            ## Do the necessary parts over here
+                    deriv_list.append(curr_list)
+
+                ## print(deriv_list)
+                ## Call function and print result
+                ## psi4.rotation_vibave_cartesian(mol, deriv_list)
+                ## ideal name ^
+                psi4.zpvc_rotation(mol, deriv_list)
+                ## hack for now ^
+                ## Do the necessary parts over here
+
+            if kwargs['disp_mode'] == 'normal':
+                for j in xrange(len(opt_rot_single[i])/2):
+                # j enumerates the 3n coordinates
+                # '2j' is displacement in +ve direction in coordinate 'j'
+                # '2j+1' in the -ve direction
+                    numr = alpha_single[i][2*j]
+                    numr += alpha_single[i][2*j+1]
+                    numr -= 2*alpha_eq[i][0]
+
+                    val = numr/(step*step)
+
+                    deriv_list.append(curr_list)
+
+                ## fix this v
+                hessmat = findif_response_utils.file15_matrix()
+                disp_sizes = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
+                disp_sizes = [ size for (disp, size) in disp_sizes ]
+                ## fix this ^
+
+                # correction = 0.5*sum([alpha*delta_x for (alpha, delta_x) in zip(deriv_list, disp_sizes)])
+                correction = -12.34567890
+
+                psi4.print_out("Rotations:\n")
+                psi4.print_out("Mode\t+ve\t-ve\tderiv\n")
+                for mode_idx in enumerate(disp_sizes):
+                    psi4.print_out("{0}\t{1}\t{2}\t{3}\n".format(
+                        i,alpha_single[i][2*mode_idx],alpha_single[i][2*mode_idx],deriv_list[i])
+                    )
+
+                psi4.print_out("##################################")
+                psi4.print_out("Rotation at equilibrium: {}".format(alpha_eq[i][0]))
+                psi4.print_out("Correction: {}".format(correction))
+                psi4.print_out("##################################")
+                ## Do the necessary parts over here
+
 
     #TODO:
     # - compute 2nd derivatives Cartesian
