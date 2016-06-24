@@ -504,7 +504,7 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
     }
   }
   outfile->Printf("!!!! In Normal_mod_rms_amp_displacements\n");
-  outfile->Printf("--->Total Mass = %lf",total_mass);
+  outfile->Printf("--->Total Mass = %lf\n",total_mass);
 
   // Diagonalize MOI tensor
   SharedMatrix I(new Matrix("Inertia Tensor",3,3));
@@ -575,8 +575,7 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
   SharedVector freq(new Vector(natom*3));
 
   /* Convert evals from H/(kg bohr^2) to J/(kg m^2) = 1/s^2 */
-  const double km_convert = pc_hartree2J/(
-      pc_bohr2m * pc_bohr2m * pc_amu2kg);
+  const double km_convert = pc_hartree2J/(pc_bohr2m * pc_bohr2m * pc_amu2kg * pc_au2amu);
   /* v = 1/(2 pi c) sqrt( eval ) */
   const double cm_convert = 1.0/(2.0 * pc_pi * pc_c * 100.0);
   //diagonalize MW hessian
@@ -614,7 +613,6 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
   //double temp = options.get_double("T");
   double temp = 300.00;
   std::vector<std::pair<SharedMatrix,double>> disp_amp_pairs;
-  outfile->Printf("qwertyuiop\n");
   for(int i = 6; i < (3*natom); i++ ){
     // if(freq->get(i) > 1e-5){
       double omega = cm_convert*(sqrt(km_convert*freq->get(i)));
@@ -622,6 +620,7 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
       double amp = c2*omega/temp;
       amp = cosh(amp)/sinh(amp);
       amp = sqrt((c1/omega)*amp);
+      amp = amp/pc_bohr2angstroms;
       SharedMatrix d_vec(new Matrix(natom,3));
       for(int j = 0; j<natom*3; j++){
         int jcart = j%3;
@@ -631,7 +630,6 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
       disp_amp_pairs.push_back(std::make_pair(d_vec,amp));
     // }
   }
-  outfile->Printf("qwertyuiop\n");
 
   return disp_amp_pairs;
 }
