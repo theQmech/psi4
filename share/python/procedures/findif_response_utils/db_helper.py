@@ -70,7 +70,7 @@ def generate_inputs(db, database_kwargs=None):
         hessmat = file15_matrix()
         disp_w_size = psi4.normal_mode_rms_amp_displacements(molecule,hessmat)
         for (disp, size) in disp_w_size:
-            vec_m = vec_p = disp
+            vec_m = vec_p = disp.clone()
             vec_p.scale(size)
             vec_m.scale(-1.0*size)
             vec_p.add(eq_geom)

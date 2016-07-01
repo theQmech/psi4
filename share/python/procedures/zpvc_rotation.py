@@ -252,6 +252,12 @@ def rotation_findif_correction(name, **kwargs):
                 ## Do the necessary parts over here
 
             if kwargs['disp_mode'] == 'normal':
+                ## fix this v
+                hessmat = findif_response_utils.file15_matrix()
+                disp_sizes = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
+                disp_sizes = [ size*pc_bohr2angstroms for (disp, size) in disp_sizes ]
+                ## fix this ^
+
                 for j in xrange(len(opt_rot_single[i])/2):
                 # j enumerates the 3n coordinates
                 # '2j' is displacement in +ve direction in coordinate 'j'
@@ -260,24 +266,17 @@ def rotation_findif_correction(name, **kwargs):
                     numr += alpha_single[i][2*j+1]
                     numr -= 2*alpha_eq[i][0]
 
-                    val = numr/(step*step)
+                    val = numr/(disp_sizes[j]*disp_sizes[j])
 
-                    deriv_list.append(curr_list)
+                    deriv_list.append(val)
 
-                ## fix this v
-                hessmat = findif_response_utils.file15_matrix()
-                disp_sizes = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
-                disp_sizes = [ size for (disp, size) in disp_sizes ]
-                ## fix this ^
-
-                # correction = 0.5*sum([alpha*delta_x for (alpha, delta_x) in zip(deriv_list, disp_sizes)])
-                correction = -12.34567890
+                correction = 0.5*sum([alpha*delta_x*delta_x for (alpha, delta_x) in zip(deriv_list, disp_sizes)])
 
                 psi4.print_out("Rotations:\n")
                 psi4.print_out("Mode\t+ve\t-ve\tderiv\n")
                 for mode_idx in enumerate(disp_sizes):
                     psi4.print_out("{0}\t{1}\t{2}\t{3}\n".format(
-                        i,alpha_single[i][2*mode_idx],alpha_single[i][2*mode_idx],deriv_list[i])
+                        i,alpha_single[i][2*mode_idx],alpha_single[i][2*mode_idx+1],deriv_list[i])
                     )
 
                 psi4.print_out("##################################")
