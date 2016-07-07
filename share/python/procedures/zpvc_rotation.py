@@ -80,7 +80,8 @@ def rotation_findif_correction(name, **kwargs):
     ## in kwargs_lower(in procutil.py) matches the string 'normal' and is 
     ## in turn converted to False.
     ## Work around for now, let us fix that later
-    kwargs.update({'disp_mode' : 'normal'})
+    if kwargs['disp_mode'] == False:
+        kwargs.update({'disp_mode' : 'normal'})
     ############################
 
     psi4.print_out(
@@ -97,26 +98,25 @@ def rotation_findif_correction(name, **kwargs):
     # dirs are created in order dir0, dir1...
     # respective daatabases are _bak0, _bak1....
     # current working database is plane database which corresponds to most fresh dir
-    if ('zpvc_computed' in db) and ( db['zpvc_computed'] ):
-        
-        # increment dbno until backup database exists
-        while True:
-            db_bak = shelve.open('.database.bak{}'.format(dbno), writeback=True)
-            if not ('zpvc_computed' in db_bak):
-                break
-            else:
-                db_bak.close()
-                dbno += 1
+    # if ('zpvc_computed' in db) and ( db['zpvc_computed'] ):
+    #     # increment dbno until backup database exists
+    #     while True:
+    #         db_bak = shelve.open('.database.bak{}'.format(dbno), writeback=True)
+    #         if not ('zpvc_computed' in db_bak):
+    #             break
+    #         else:
+    #             db_bak.close()
+    #             dbno += 1
 
-        for key,value in db.iteritems():
-            db_bak[key]=value
+    #     for key,value in db.iteritems():
+    #         db_bak[key]=value
 
-        db_bak.close()
-        db['zpvc_computed'] = False
+    #     db_bak.close()
+    #     db['zpvc_computed'] = False
     
-        dbno += 1
-    else:
-        db['zpvc_computed'] = False
+    #     dbno += 1
+    # else:
+    #     db['zpvc_computed'] = False
     # Assertion: dbno = number of dirs created before this
 
     database_kwargs = {}
@@ -191,7 +191,7 @@ def rotation_findif_correction(name, **kwargs):
         #     {list of guages}->{list of tensors}->{list of 9 floats}
         alpha_single = [
             [
-                sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
+                sum([float(tensor[4*index]) for index in range(3)]) for tensor in guage
             ]
         for guage in opt_rot_single
         ]
@@ -199,30 +199,31 @@ def rotation_findif_correction(name, **kwargs):
         if kwargs['disp_mode'] == 'cartesian':
             alpha_mixed = [
                 [
-                    sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
+                    sum([float(tensor[4*index]) for index in range(3)]) for tensor in guage
                 ]
             for guage in opt_rot_mixed
             ]
 
         alpha_eq = [
             [
-                sum([float(tensor[4*index]) for index in xrange(3)]) for tensor in guage
+                sum([float(tensor[4*index]) for index in range(3)]) for tensor in guage
             ]
         for guage in opt_rot_eq
         ]
 
-        step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
 
-        for i in xrange(len(consider_gauge[mygauge])):
-            deriv_list = []
+        for i,curr_guage in enumerate(consider_gauge[mygauge]):
 
             if kwargs['disp_mode'] == 'cartesian':
-                for j in xrange(len(opt_rot_single[i])/2):
+                D_2 = []
+                step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
+                
+                for j in range(3*mol.natom):
                 # j enumerates the 3n coordinates
                 # '2j' is displacement in +ve direction in coordinate 'j'
                 # '2j+1' in the -ve direction
-                    curr_list = []
-                    for k in xrange(j+1):
+                    curr_row = []
+                    for k in range(j+1):
                         val = 0.0
 
                         if (k == j):
@@ -239,26 +240,31 @@ def rotation_findif_correction(name, **kwargs):
 
                             val = numr/(4*step*step)
 
-                        curr_list.append(val)
+                        curr_row.append(val)
 
-                    deriv_list.append(curr_list)
+                    ## D_2 ==> lower triangle of D matrix
+                    D_2.append(curr_row)
 
-                ## print(deriv_list)
+                ## print(D_2)
                 ## Call function and print result
-                ## psi4.rotation_vibave_cartesian(mol, deriv_list)
+                ## psi4.rotation_vibave_cartesian(mol, D_2)
                 ## ideal name ^
-                psi4.zpvc_rotation(mol, deriv_list)
+                psi4.zpvc_rotation(mol, D_2)
                 ## hack for now ^
                 ## Do the necessary parts over here
 
             if kwargs['disp_mode'] == 'normal':
+                deriv_list = []
+
                 ## fix this v
                 hessmat = findif_response_utils.file15_matrix()
                 disp_sizes = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
-                disp_sizes = [ size*pc_bohr2angstroms for (disp, size) in disp_sizes ]
+                disp_sizes = [ size*psi_bohr2angstroms for (disp, size) in disp_sizes ]
                 ## fix this ^
+                ## actually not needed, `delta(x)^2` just cancel each other out
+                ## in final expression, can remove this block
 
-                for j in xrange(len(opt_rot_single[i])/2):
+                for j in range(len(opt_rot_single[i])/2):
                 # j enumerates the 3n coordinates
                 # '2j' is displacement in +ve direction in coordinate 'j'
                 # '2j+1' in the -ve direction
@@ -272,18 +278,25 @@ def rotation_findif_correction(name, **kwargs):
 
                 correction = 0.5*sum([alpha*delta_x*delta_x for (alpha, delta_x) in zip(deriv_list, disp_sizes)])
 
-                psi4.print_out("Rotations:\n")
-                psi4.print_out("Mode\t+ve\t-ve\tderiv\n")
-                for mode_idx in enumerate(disp_sizes):
-                    psi4.print_out("{0}\t{1}\t{2}\t{3}\n".format(
-                        i,alpha_single[i][2*mode_idx],alpha_single[i][2*mode_idx+1],deriv_list[i])
+                psi4.print_out("\n\n")
+                psi4.print_out("########################################\n")
+                psi4.print_out("#### {0} Results ##\n".format(curr_guage))
+                psi4.print_out("########################################\n")
+                psi4.print_out("\n")
+                psi4.print_out("------------------------------------------------------------------\n")
+                psi4.print_out("Mode     +ve             -ve           size(ang)         deriv\n")
+                psi4.print_out("------------------------------------------------------------------\n")
+                for idx, size in enumerate(disp_sizes):
+                    psi4.print_out("{0}\t{1:12.8f}\t{2:12.8f}\t{3:12.8f}\t{4:12.8f}\n".format(
+                        idx,alpha_single[i][2*idx],alpha_single[i][2*idx+1],disp_sizes[idx],deriv_list[idx])
                     )
+                psi4.print_out("------------------------------------------------------------------\n")
 
-                psi4.print_out("##################################")
-                psi4.print_out("Rotation at equilibrium: {}".format(alpha_eq[i][0]))
-                psi4.print_out("Correction: {}".format(correction))
-                psi4.print_out("##################################")
-                ## Do the necessary parts over here
+                psi4.print_out("\n")
+                psi4.print_out("Rotation:\t{}\n".format(alpha_eq[i][0]))
+                psi4.print_out("Correction:\t{}\n".format(correction))
+                psi4.print_out("########################################\n")
+                psi4.print_out("\n\n")
 
 
     #TODO:
