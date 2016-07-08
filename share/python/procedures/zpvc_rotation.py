@@ -68,6 +68,8 @@ def rotation_findif_correction(name, **kwargs):
         raise p4util.ValidationError('rotation_findif_correction can only be performed for one wavelength.')
     else:
         pass
+    ## assume in NM
+    nu_hartrees = psi_h*psi_c/(omega[0]*(1e-9))/psi_hartree2J
 
     mol = psi4.get_active_molecule()
 
@@ -249,20 +251,34 @@ def rotation_findif_correction(name, **kwargs):
                 ## Call function and print result
                 ## psi4.rotation_vibave_cartesian(mol, D_2)
                 ## ideal name ^
-                psi4.zpvc_rotation(mol, D_2)
+                psi4.rotation_vibave_cartesian(mol, D_2)
                 ## hack for now ^
                 ## Do the necessary parts over here
 
             if kwargs['disp_mode'] == 'normal':
                 deriv_list = []
+                step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
 
+                psi_pi = 3.14159265358979323846264338327950288
+                psi4.print_out("\nnu = {0}".format(nu_hartrees))
                 ## fix this v
                 hessmat = findif_response_utils.file15_matrix()
                 disp_sizes = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
-                disp_sizes = [ size*psi_bohr2angstroms for (disp, size) in disp_sizes ]
+                disp_amps = [ size*psi_bohr2angstroms for (disp, size) in disp_sizes ]
                 ## fix this ^
                 ## actually not needed, `delta(x)^2` just cancel each other out
                 ## in final expression, can remove this block
+
+                #calculate factor of conversion to degrees
+                bohr2a4 = psi_bohr2angstroms * psi_bohr2angstroms * psi_bohr2angstroms * psi_bohr2angstroms
+                m2a = psi_bohr2angstroms * 1.0e-10
+                hbar = psi_h/(2.0 * psi_pi)
+                prefactor = 1.0e-2 * hbar/(psi_c * 2.0 * psi_pi * psi_me * m2a * m2a)
+                prefactor *= prefactor
+                prefactor *= 288.0e-30 * psi_pi * psi_pi * psi_na * bohr2a4
+                total_mass = sum([mol.mass(atom_idx) for atom_idx in range(mol.natom())])
+                print("Total mass {}".format(total_mass))
+                factor = prefactor * (-1.0/nu_hartrees/nu_hartrees) * nu_hartrees * nu_hartrees / total_mass
 
                 for j in range(len(opt_rot_single[i])/2):
                 # j enumerates the 3n coordinates
@@ -272,30 +288,32 @@ def rotation_findif_correction(name, **kwargs):
                     numr += alpha_single[i][2*j+1]
                     numr -= 2*alpha_eq[i][0]
 
-                    val = numr/(disp_sizes[j]*disp_sizes[j])
+                    val = numr/(disp_amps[j]*step*disp_amps[j]*step)
 
                     deriv_list.append(val)
 
-                correction = 0.5*sum([alpha*delta_x*delta_x for (alpha, delta_x) in zip(deriv_list, disp_sizes)])
+                corrections_list = [alpha*delta_x*delta_x for (alpha, delta_x) in zip(deriv_list, disp_amps)]
+                correction = 0.5*sum(corrections_list)
 
                 psi4.print_out("\n\n")
-                psi4.print_out("########################################\n")
-                psi4.print_out("#### {0} Results ##\n".format(curr_guage))
-                psi4.print_out("########################################\n")
+                psi4.print_out("##########################################################\n")
+                psi4.print_out("#### {0} Results at {1:6.2f} nm##\n".format(curr_guage, omega[0]))
+                psi4.print_out("##########################################################\n")
                 psi4.print_out("\n")
-                psi4.print_out("------------------------------------------------------------------\n")
-                psi4.print_out("Mode     +ve             -ve           size(ang)         deriv\n")
-                psi4.print_out("------------------------------------------------------------------\n")
-                for idx, size in enumerate(disp_sizes):
-                    psi4.print_out("{0}\t{1:12.8f}\t{2:12.8f}\t{3:12.8f}\t{4:12.8f}\n".format(
-                        idx,alpha_single[i][2*idx],alpha_single[i][2*idx+1],disp_sizes[idx],deriv_list[idx])
+                psi4.print_out("---------------------------------------------------------------------------------------------\n")
+                psi4.print_out("Mode   alpha(deg/[dm (g/cm^3)])         delta_x         deriv         correction\n")
+                psi4.print_out("       positive        negative        angstrom                   deg/[dm (g/cm^3)]\n")
+                psi4.print_out("---------------------------------------------------------------------------------------------\n")
+                for idx, size in enumerate(disp_amps):
+                    psi4.print_out("{0}\t{1:12.8f}\t{2:12.8f}\t{3:12.8f}\t{4:12.8f}\t{5:12.8f}\n".format(
+                        idx,alpha_single[i][2*idx]*factor,alpha_single[i][2*idx+1]*factor,disp_amps[idx],deriv_list[idx]*factor, corrections_list[idx]*factor)
                     )
-                psi4.print_out("------------------------------------------------------------------\n")
+                psi4.print_out("---------------------------------------------------------------------------------------------\n")
 
                 psi4.print_out("\n")
-                psi4.print_out("Rotation:\t{}\n".format(alpha_eq[i][0]))
-                psi4.print_out("Correction:\t{}\n".format(correction))
-                psi4.print_out("########################################\n")
+                psi4.print_out("Rotation:\t{0:12.8f}\n".format(alpha_eq[i][0]*factor))
+                psi4.print_out("Correction:\t{0:12.8f}\n".format(correction*factor))
+                psi4.print_out("##########################################################\n")
                 psi4.print_out("\n\n")
 
 

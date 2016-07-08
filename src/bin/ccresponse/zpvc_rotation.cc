@@ -88,7 +88,7 @@ namespace psi { namespace ccresponse {
 
 void print_tensor_der(boost::shared_ptr<OutFile> myfile, std::vector<SharedMatrix> my_tensor_list);
 
-void zpvc_rotation(boost::shared_ptr<Molecule> molecule,
+void rotation_vibave_cartesian(boost::shared_ptr<Molecule> molecule,
     Options &options,
     SharedMatrix d2_alpha_dx2)
 {

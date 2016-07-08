@@ -2027,10 +2027,6 @@ def run_cc_property(name, **kwargs):
         ['CCEOM', 'R_CONVERGENCE'],
         ['CCEOM', 'E_CONVERGENCE'])
 
-###############################
-    print("%%%%%%%%", kwargs, "%%%%%%%%%%%%")
-###############################
-
     oneel_properties = ['dipole', 'quadrupole']
     twoel_properties = []
     response_properties = ['polarizability', 'rotation', 'roa',

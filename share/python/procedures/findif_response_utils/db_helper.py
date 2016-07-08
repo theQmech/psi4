@@ -69,10 +69,12 @@ def generate_inputs(db, database_kwargs=None):
     elif database_kwargs['disp_mode']=='normal':
         hessmat = file15_matrix()
         disp_w_size = psi4.normal_mode_rms_amp_displacements(molecule,hessmat)
+        step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
         for (disp, size) in disp_w_size:
-            vec_m = vec_p = disp.clone()
-            vec_p.scale(size)
-            vec_m.scale(-1.0*size)
+            vec_p = disp.clone()
+            vec_m = disp.clone()
+            vec_p.scale(size*step)
+            vec_m.scale(-1.0*size*step)
             vec_p.add(eq_geom)
             vec_m.add(eq_geom)
             single_displacement_geoms.extend((vec_p, vec_m))
