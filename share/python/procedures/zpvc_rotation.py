@@ -68,6 +68,7 @@ def rotation_findif_correction(name, **kwargs):
         raise p4util.ValidationError('rotation_findif_correction can only be performed for one wavelength.')
     else:
         pass
+
     ## assume in NM
     nu_hartrees = psi_h*psi_c/(omega[0]*(1e-9))/psi_hartree2J
 
@@ -220,7 +221,7 @@ def rotation_findif_correction(name, **kwargs):
                 D_2 = []
                 step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
                 
-                for j in range(3*mol.natom):
+                for j in range(len(opt_rot_single)/2):
                 # j enumerates the 3n coordinates
                 # '2j' is displacement in +ve direction in coordinate 'j'
                 # '2j+1' in the -ve direction
@@ -259,26 +260,32 @@ def rotation_findif_correction(name, **kwargs):
                 deriv_list = []
                 step = psi4.get_local_option('FINDIF', 'DISP_SIZE')
 
-                psi_pi = 3.14159265358979323846264338327950288
-                psi4.print_out("\nnu = {0}".format(nu_hartrees))
+                const_pi = 3.14159265358979323846264338327950288
+
                 ## fix this v
                 hessmat = findif_response_utils.file15_matrix()
                 disp_sizes = psi4.normal_mode_rms_amp_displacements(mol,hessmat)
                 disp_amps = [ size*psi_bohr2angstroms for (disp, size) in disp_sizes ]
                 ## fix this ^
                 ## actually not needed, `delta(x)^2` just cancel each other out
-                ## in final expression, can remove this block
+                ## in final expression, so can remove this block
 
                 #calculate factor of conversion to degrees
                 bohr2a4 = psi_bohr2angstroms * psi_bohr2angstroms * psi_bohr2angstroms * psi_bohr2angstroms
                 m2a = psi_bohr2angstroms * 1.0e-10
-                hbar = psi_h/(2.0 * psi_pi)
-                prefactor = 1.0e-2 * hbar/(psi_c * 2.0 * psi_pi * psi_me * m2a * m2a)
+                hbar = psi_h/(2.0 * const_pi)
+                prefactor = 1.0e-2 * hbar/(psi_c * 2.0 * const_pi * psi_me * m2a * m2a)
                 prefactor *= prefactor
-                prefactor *= 288.0e-30 * psi_pi * psi_pi * psi_na * bohr2a4
+                prefactor *= 288.0e-30 * const_pi * const_pi * psi_na * bohr2a4
+                print("python prefactor = {}".format(prefactor))
                 total_mass = sum([mol.mass(atom_idx) for atom_idx in range(mol.natom())])
+                
                 print("Total mass {}".format(total_mass))
-                factor = prefactor * (-1.0/nu_hartrees/nu_hartrees) * nu_hartrees * nu_hartrees / total_mass
+                if curr_guage == 'Length Gauge':
+                    factor = prefactor * (-1.0/3.0/nu_hartrees) * nu_hartrees * nu_hartrees / total_mass
+                elif curr_guage == 'Modified Velocity Gauge':
+                    factor = prefactor * (-1.0/3.0/nu_hartrees/nu_hartrees) * nu_hartrees * nu_hartrees / total_mass
+                print("python factor = {}".format(factor))
 
                 for j in range(len(opt_rot_single[i])/2):
                 # j enumerates the 3n coordinates
@@ -292,8 +299,15 @@ def rotation_findif_correction(name, **kwargs):
 
                     deriv_list.append(val)
 
-                corrections_list = [alpha*delta_x*delta_x for (alpha, delta_x) in zip(deriv_list, disp_amps)]
-                correction = 0.5*sum(corrections_list)
+                corrections_list = [(0.5)*alpha*delta_x*delta_x for (alpha, delta_x) in zip(deriv_list, disp_amps)]
+                correction = sum(corrections_list)
+                
+                freq_cm = []
+                try:
+                    freq_cm = [ line.rstrip('\n') for line in open('freq.dat')][3:3+(3*mol.natom())-6]
+                    freq_cm = [ float(line.split(':')[1]) for line in freq_cm]
+                except:
+                    print("file 'freq.dat' not found")
 
                 psi4.print_out("\n\n")
                 psi4.print_out("##########################################################\n")
@@ -301,33 +315,20 @@ def rotation_findif_correction(name, **kwargs):
                 psi4.print_out("##########################################################\n")
                 psi4.print_out("\n")
                 psi4.print_out("---------------------------------------------------------------------------------------------\n")
-                psi4.print_out("Mode   alpha(deg/[dm (g/cm^3)])         delta_x         deriv         correction\n")
-                psi4.print_out("       positive        negative        angstrom                   deg/[dm (g/cm^3)]\n")
+                psi4.print_out("Mode  freq    alpha(deg/[dm (g/cm^3)])         delta_x           deriv         correction\n")
+                psi4.print_out("     (cm-1)   positive        negative        angstrom                      deg/[dm (g/cm^3)]\n")
                 psi4.print_out("---------------------------------------------------------------------------------------------\n")
                 for idx, size in enumerate(disp_amps):
-                    psi4.print_out("{0}\t{1:12.8f}\t{2:12.8f}\t{3:12.8f}\t{4:12.8f}\t{5:12.8f}\n".format(
-                        idx,alpha_single[i][2*idx]*factor,alpha_single[i][2*idx+1]*factor,disp_amps[idx],deriv_list[idx]*factor, corrections_list[idx]*factor)
+                    psi4.print_out("{0}\t{1:7.2f}\t{2:12.8f}\t{3:12.8f}\t{4:12.8f}\t{5:13.8f}\t{6:12.8f}\n".format(
+                        idx,freq_cm[idx],alpha_single[i][2*idx]*factor,alpha_single[i][2*idx+1]*factor,disp_amps[idx],deriv_list[idx]*factor, corrections_list[idx]*factor)
                     )
                 psi4.print_out("---------------------------------------------------------------------------------------------\n")
 
                 psi4.print_out("\n")
-                psi4.print_out("Rotation:\t{0:12.8f}\n".format(alpha_eq[i][0]*factor))
-                psi4.print_out("Correction:\t{0:12.8f}\n".format(correction*factor))
+                psi4.print_out("Rotation(in deg/[dm (g/cm^3)]):\t{0:12.8f}\n".format(alpha_eq[i][0]*factor))
+                psi4.print_out("Correction(in deg/[dm (g/cm^3)]):\t{0:12.8f}\n".format(correction*factor))
                 psi4.print_out("##########################################################\n")
                 psi4.print_out("\n\n")
-
-
-    #TODO:
-    # - compute 2nd derivatives Cartesian
-    # - read hessian
-    # - compute normal mode vectors
-    # - build rotation-translation projector
-    # - transform 2nd derivatives Cartesian to normal modes
-    # - project out rotation and translations
-    # - compute zpvc to optical rotation
-    # - report rotation @ eq-point
-    # - report correction alone
-    # - report total rotation+correction
 
         db['zpvc_computed'] = True
 

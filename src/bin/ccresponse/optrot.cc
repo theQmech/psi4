@@ -416,13 +416,22 @@ void optrot(boost::shared_ptr<Molecule> molecule)
 
     /* compute the specific rotation */
     for(j=0,M=0.0; j < moinfo.natom ;j++) M += molecule->mass(j);  /* amu */
+    printf("C++ side-----------------\n");
     nu = params.omega[i]; /* hartree */
+    printf("nu = %f\n",nu );
     bohr2a4 = pc_bohr2angstroms * pc_bohr2angstroms * pc_bohr2angstroms * pc_bohr2angstroms;
+    printf("bohr2a4 = %f\n",bohr2a4 );
     m2a = pc_bohr2angstroms * 1.0e-10;
+    printf("m2a = %f\n",m2a );
     hbar = pc_h/(2.0 * pc_pi);
+    printf("hbar = %f\n",hbar );
     prefactor = 1.0e-2 * hbar/(pc_c * 2.0 * pc_pi * pc_me * m2a * m2a);
+    printf("prefactor = %f\n",prefactor );
     prefactor *= prefactor;
+    printf("prefactor = %f\n",prefactor );
     prefactor *= 288.0e-30 * pc_pi * pc_pi * pc_na * bohr2a4;
+    printf("prefactor = %f\n",prefactor );
+    printf("C++ side-----------------\n");
 
     if(compute_rl) {
       if (params.wfn == "CC2")
@@ -496,6 +505,7 @@ void optrot(boost::shared_ptr<Molecule> molecule)
       TrG_pl = -(tensor_pl[i][0][0] + tensor_pl[i][1][1] + tensor_pl[i][2][2])/(3.0 * params.omega[i]);
       TrG_pl /= params.omega[i];
 
+      printf("C++ factor = {}", )
       rotation_mod[i] = prefactor * TrG_pl * nu * nu / M;
       outfile->Printf( "\n   Specific rotation using modified velocity-gauge Rosenfeld tensor.\n");
       outfile->Printf( "\t[alpha]_(%5.3f) = %10.5f deg/[dm (g/cm^3)]\n", params.omega[i], rotation_mod[i]);

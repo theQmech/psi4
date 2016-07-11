@@ -606,6 +606,13 @@ std::vector<std::pair<SharedMatrix,double>> normal_mode_rms_amp_displacements(
     }
   }
   Lx->print("Lx.test");
+  SharedVector freq_cm(new Vector(natom*3-6));
+  for(int i = 6; i < (3*natom); i++ ){
+    double omega = cm_convert*(sqrt(km_convert*freq->get(i)));
+    freq_cm->set(i-6, omega); 
+  }
+  //used later while printing final output in zpvc-correction
+  freq_cm->print("freq.dat");
   //create displacement "vectors" and compute displacement amplitude for each
   //wiberg's constants
   double c1 = 16.8576;
